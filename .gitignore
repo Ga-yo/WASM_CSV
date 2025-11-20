@@ -39,3 +39,12 @@
 
 # debug information files
 *.dwo
+
+# WASM build output files
+*.wasm
+wasm_csv_project/csv_converter.js
+wasm_csv_project/csv_converter_standard.js
+wasm_csv_project/csv_converter_optimized.js
+
+# macOS
+.DS_Store
