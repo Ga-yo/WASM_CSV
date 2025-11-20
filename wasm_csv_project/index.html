@@ -1037,23 +1037,116 @@ async function processFile(file) {
   }
 }
 
-function readFileContent(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
+async function readFileContent(file) {
+  // First, read as binary to detect encoding
+  const arrayBuffer = await file.arrayBuffer();
+  const uint8Array = new Uint8Array(arrayBuffer);
 
-    reader.onload = (e) => {
-      let content = e.target.result;
+  // Detect encoding
+  const encoding = detectEncoding(uint8Array);
+  console.log('Detected encoding:', encoding);
 
-      // Try to detect and convert encoding if needed
-      // Most Korean CSV files are in EUC-KR or CP949
-      resolve(content);
-    };
+  // Decode with detected encoding
+  const decoder = new TextDecoder(encoding);
+  const content = decoder.decode(uint8Array);
 
-    reader.onerror = () => reject(new Error('파일을 읽을 수 없습니다.'));
+  return content;
+}
 
-    // Try UTF-8 first
-    reader.readAsText(file, 'UTF-8');
-  });
+function detectEncoding(uint8Array) {
+  // Check for BOM (Byte Order Mark)
+  if (uint8Array.length >= 3 &&
+      uint8Array[0] === 0xEF &&
+      uint8Array[1] === 0xBB &&
+      uint8Array[2] === 0xBF) {
+    return 'utf-8';
+  }
+
+  // Check for UTF-16 BOM
+  if (uint8Array.length >= 2) {
+    if (uint8Array[0] === 0xFE && uint8Array[1] === 0xFF) {
+      return 'utf-16be';
+    }
+    if (uint8Array[0] === 0xFF && uint8Array[1] === 0xFE) {
+      return 'utf-16le';
+    }
+  }
+
+  // Heuristic detection for EUC-KR vs UTF-8
+  let utf8Score = 0;
+  let eucKrScore = 0;
+  let i = 0;
+
+  while (i < uint8Array.length && i < 10000) {
+    const byte = uint8Array[i];
+
+    // Check for valid UTF-8 sequences
+    if (byte <= 0x7F) {
+      // ASCII - valid in both
+      i++;
+      continue;
+    }
+
+    // UTF-8 multi-byte sequence detection
+    if (byte >= 0xC2 && byte <= 0xDF && i + 1 < uint8Array.length) {
+      // 2-byte UTF-8
+      if (uint8Array[i + 1] >= 0x80 && uint8Array[i + 1] <= 0xBF) {
+        utf8Score += 2;
+        i += 2;
+        continue;
+      }
+    }
+
+    if (byte >= 0xE0 && byte <= 0xEF && i + 2 < uint8Array.length) {
+      // 3-byte UTF-8 (Korean characters are typically here)
+      const byte2 = uint8Array[i + 1];
+      const byte3 = uint8Array[i + 2];
+      if (byte2 >= 0x80 && byte2 <= 0xBF && byte3 >= 0x80 && byte3 <= 0xBF) {
+        // Check for Korean Unicode range (AC00-D7AF = 가-힣)
+        if (byte === 0xEA || byte === 0xEB || byte === 0xEC || byte === 0xED) {
+          utf8Score += 5;
+        } else {
+          utf8Score += 3;
+        }
+        i += 3;
+        continue;
+      }
+    }
+
+    // EUC-KR detection (Korean characters: 0xB0A1-0xC8FE)
+    if (byte >= 0xB0 && byte <= 0xC8 && i + 1 < uint8Array.length) {
+      const nextByte = uint8Array[i + 1];
+      if (nextByte >= 0xA1 && nextByte <= 0xFE) {
+        eucKrScore += 3;
+        i += 2;
+        continue;
+      }
+    }
+
+    // Extended EUC-KR / CP949 detection (0x81-0xFE)
+    if (byte >= 0x81 && byte <= 0xFE && i + 1 < uint8Array.length) {
+      const nextByte = uint8Array[i + 1];
+      if ((nextByte >= 0x41 && nextByte <= 0x5A) ||
+          (nextByte >= 0x61 && nextByte <= 0x7A) ||
+          (nextByte >= 0x81 && nextByte <= 0xFE)) {
+        eucKrScore += 2;
+        i += 2;
+        continue;
+      }
+    }
+
+    i++;
+  }
+
+  console.log('Encoding scores - UTF-8:', utf8Score, 'EUC-KR:', eucKrScore);
+
+  // If EUC-KR score is significantly higher, use EUC-KR
+  if (eucKrScore > utf8Score * 1.5 && eucKrScore > 10) {
+    return 'euc-kr';
+  }
+
+  // Default to UTF-8
+  return 'utf-8';
 }
 
 function formatBytes(bytes) {
