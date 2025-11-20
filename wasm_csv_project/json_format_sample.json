@@ -1,0 +1,122 @@
+{
+  "metadata": {
+    "filename": "sample.csv",
+    "total_rows": 100,
+    "total_columns": 5,
+    "file_size_bytes": 2048,
+    "encoding": "UTF-8",
+    "delimiter": ",",
+    "has_header": true,
+    "created_at": "2025-11-20T10:30:00Z"
+  },
+  "schema": {
+    "columns": [
+      {
+        "index": 0,
+        "name": "id",
+        "type": "integer",
+        "nullable": false,
+        "unique": true
+      },
+      {
+        "index": 1,
+        "name": "name",
+        "type": "string",
+        "nullable": true,
+        "unique": false
+      },
+      {
+        "index": 2,
+        "name": "price",
+        "type": "float",
+        "nullable": true,
+        "unique": false
+      },
+      {
+        "index": 3,
+        "name": "date",
+        "type": "date",
+        "nullable": true,
+        "unique": false,
+        "format": "YYYY-MM-DD"
+      },
+      {
+        "index": 4,
+        "name": "active",
+        "type": "boolean",
+        "nullable": false,
+        "unique": false
+      }
+    ]
+  },
+  "statistics": {
+    "columns": {
+      "id": {
+        "type": "integer",
+        "min": 1,
+        "max": 100,
+        "null_count": 0,
+        "unique_count": 100
+      },
+      "name": {
+        "type": "string",
+        "null_count": 2,
+        "unique_count": 98,
+        "min_length": 2,
+        "max_length": 50
+      },
+      "price": {
+        "type": "float",
+        "min": 10.5,
+        "max": 9999.99,
+        "mean": 150.75,
+        "median": 125.00,
+        "null_count": 5
+      },
+      "date": {
+        "type": "date",
+        "min": "2020-01-01",
+        "max": "2025-11-20",
+        "null_count": 3
+      },
+      "active": {
+        "type": "boolean",
+        "true_count": 75,
+        "false_count": 25,
+        "null_count": 0
+      }
+    }
+  },
+  "data": [
+    {
+      "id": 1,
+      "name": "Product A",
+      "price": 29.99,
+      "date": "2025-01-15",
+      "active": true
+    },
+    {
+      "id": 2,
+      "name": "Product B",
+      "price": 49.50,
+      "date": "2025-02-20",
+      "active": false
+    },
+    {
+      "id": 3,
+      "name": null,
+      "price": 15.00,
+      "date": null,
+      "active": true
+    }
+  ],
+  "errors": [
+    {
+      "row": 45,
+      "column": "price",
+      "error_type": "parse_error",
+      "message": "Invalid number format",
+      "original_value": "N/A"
+    }
+  ]
+}

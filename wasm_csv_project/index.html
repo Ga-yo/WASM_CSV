@@ -888,4 +888,190 @@
 </div>
 </div>
 
+<!-- JSON Result Modal -->
+<div id="result-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50 flex items-center justify-center">
+  <div class="bg-white rounded-xl w-[90%] max-w-[1200px] max-h-[90vh] overflow-hidden flex flex-col">
+    <div class="p-4 border-b border-neutral-200 flex items-center justify-between">
+      <div class="text-lg font-semibold text-neutral-900">변환 결과</div>
+      <div class="flex items-center gap-2">
+        <button id="btn-download-json" class="h-9 px-3 rounded-md bg-neutral-900 text-white text-sm">다운로드</button>
+        <button id="btn-close-modal" class="h-9 px-3 rounded-md border border-neutral-200 text-sm text-neutral-800 hover:bg-neutral-100">닫기</button>
+      </div>
+    </div>
+    <div class="p-4 overflow-auto flex-1">
+      <pre id="json-output" class="text-sm bg-neutral-50 p-4 rounded-lg overflow-auto" style="max-height: 60vh;"></pre>
+    </div>
+    <div id="result-stats" class="p-4 border-t border-neutral-200 bg-neutral-50">
+      <div class="grid grid-cols-4 gap-4 text-sm">
+        <div><span class="text-neutral-500">파일명:</span> <span id="stat-filename" class="font-medium">-</span></div>
+        <div><span class="text-neutral-500">행 수:</span> <span id="stat-rows" class="font-medium">-</span></div>
+        <div><span class="text-neutral-500">열 수:</span> <span id="stat-cols" class="font-medium">-</span></div>
+        <div><span class="text-neutral-500">파일 크기:</span> <span id="stat-size" class="font-medium">-</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Loading Indicator -->
+<div id="loading" class="fixed inset-0 bg-black bg-opacity-30 hidden z-50 flex items-center justify-center">
+  <div class="bg-white rounded-lg p-6 flex items-center gap-3">
+    <div class="animate-spin h-5 w-5 border-2 border-neutral-900 border-t-transparent rounded-full"></div>
+    <span class="text-neutral-800">변환 중...</span>
+  </div>
+</div>
+
+<script src="csv_converter.js"></script>
+<script>
+let convertedJson = null;
+let currentFilename = '';
+
+// Wait for WASM module to load
+var Module = {
+  onRuntimeInitialized: function() {
+    console.log('WASM module loaded');
+    initializeApp();
+  }
+};
+
+function initializeApp() {
+  const fileInput = document.getElementById('file-input');
+  const dropzone = document.getElementById('dropzone');
+  const btnUploadTop = document.getElementById('btn-upload-top');
+  const modal = document.getElementById('result-modal');
+  const btnCloseModal = document.getElementById('btn-close-modal');
+  const btnDownload = document.getElementById('btn-download-json');
+  const loading = document.getElementById('loading');
+
+  // File input change handler
+  fileInput.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      processFile(file);
+    }
+  });
+
+  // Button click to trigger file input
+  btnUploadTop.addEventListener('click', () => {
+    fileInput.click();
+  });
+
+  // Drag and drop handlers
+  dropzone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    dropzone.classList.add('border-neutral-900', 'bg-neutral-100');
+  });
+
+  dropzone.addEventListener('dragleave', (e) => {
+    e.preventDefault();
+    dropzone.classList.remove('border-neutral-900', 'bg-neutral-100');
+  });
+
+  dropzone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dropzone.classList.remove('border-neutral-900', 'bg-neutral-100');
+    const file = e.dataTransfer.files[0];
+    if (file && file.name.endsWith('.csv')) {
+      processFile(file);
+    } else {
+      alert('CSV 파일만 업로드 가능합니다.');
+    }
+  });
+
+  // Modal handlers
+  btnCloseModal.addEventListener('click', () => {
+    modal.classList.add('hidden');
+  });
+
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) {
+      modal.classList.add('hidden');
+    }
+  });
+
+  // Download handler
+  btnDownload.addEventListener('click', () => {
+    if (convertedJson) {
+      const blob = new Blob([convertedJson], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = currentFilename.replace('.csv', '.json');
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+  });
+}
+
+async function processFile(file) {
+  const loading = document.getElementById('loading');
+  const modal = document.getElementById('result-modal');
+
+  loading.classList.remove('hidden');
+  currentFilename = file.name;
+
+  try {
+    const content = await readFileContent(file);
+
+    // Convert CSV to JSON using WASM
+    convertedJson = Module.convertToJson(content, file.name);
+
+    // Parse JSON to get metadata
+    const jsonData = JSON.parse(convertedJson);
+
+    // Update UI
+    document.getElementById('json-output').textContent = JSON.stringify(jsonData, null, 2);
+    document.getElementById('stat-filename').textContent = jsonData.metadata.filename;
+    document.getElementById('stat-rows').textContent = jsonData.metadata.total_rows.toLocaleString();
+    document.getElementById('stat-cols').textContent = jsonData.metadata.total_columns;
+    document.getElementById('stat-size').textContent = formatBytes(jsonData.metadata.file_size_bytes);
+
+    loading.classList.add('hidden');
+    modal.classList.remove('hidden');
+
+  } catch (error) {
+    loading.classList.add('hidden');
+    console.error('Error processing file:', error);
+    alert('파일 처리 중 오류가 발생했습니다: ' + error.message);
+  }
+}
+
+function readFileContent(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+
+    reader.onload = (e) => {
+      let content = e.target.result;
+
+      // Try to detect and convert encoding if needed
+      // Most Korean CSV files are in EUC-KR or CP949
+      resolve(content);
+    };
+
+    reader.onerror = () => reject(new Error('파일을 읽을 수 없습니다.'));
+
+    // Try UTF-8 first
+    reader.readAsText(file, 'UTF-8');
+  });
+}
+
+function formatBytes(bytes) {
+  if (bytes === 0) return '0 Bytes';
+  const k = 1024;
+  const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+
+// For files that might be in EUC-KR encoding
+async function readFileWithEncoding(file, encoding) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => resolve(e.target.result);
+    reader.onerror = () => reject(new Error('파일을 읽을 수 없습니다.'));
+    reader.readAsText(file, encoding);
+  });
+}
+</script>
 </body></html>
