@@ -1352,14 +1352,23 @@
       try {
         const content = await readFileContent(file);
 
-        // Convert CSV to JSON using WASM (background)
-        convertedJson = Module.convertToJson(content, file.name);
+        // Convert CSV to JSON using WASM
+        // Use convertToJsonAuto for automatic handling of large files (>10MB uses metadata-only mode)
+        convertedJson = Module.convertToJsonAuto(content, file.name);
         jsonData = JSON.parse(convertedJson);
+
+        // Check if data was included (for large files, only metadata is generated)
+        const hasData = jsonData.data && jsonData.data.length > 0;
 
         // Enable buttons
         document.getElementById('btn-show-stats').disabled = false;
-        document.getElementById('btn-show-data').disabled = false;
+        document.getElementById('btn-show-data').disabled = !hasData;
         document.getElementById('btn-download-json-main').disabled = false;
+
+        // Show info for large files
+        if (!hasData && jsonData.metadata && jsonData.metadata.data_included === false) {
+          console.log('Large file detected - metadata only mode');
+        }
 
       } catch (error) {
         console.error('Error processing file:', error);
