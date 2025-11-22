@@ -25,6 +25,12 @@ if [ "$1" == "debug" ] || [ "$1" == "-d" ]; then
     BUILD_TYPE="debug"
 fi
 
+# Clean previous build files
+echo ""
+echo "Cleaning previous build files..."
+rm -f csv_converter.js csv_converter.wasm index.js index.wasm
+echo "✓ Cleaned"
+
 # Common flags for both builds
 COMMON_FLAGS=(
     -s WASM=1
