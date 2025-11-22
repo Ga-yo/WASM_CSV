@@ -21,11 +21,15 @@ fi
 
 # Parse arguments
 BUILD_TYPE="standard"
-if [ "$1" == "optimized" ] || [ "$1" == "-o" ]; then
-    BUILD_TYPE="optimized"
-elif [ "$1" == "both" ] || [ "$1" == "-b" ]; then
-    BUILD_TYPE="both"
+if [ "$1" == "debug" ] || [ "$1" == "-d" ]; then
+    BUILD_TYPE="debug"
 fi
+
+# Clean previous build files
+echo ""
+echo "Cleaning previous build files..."
+rm -f csv_converter.js csv_converter.wasm index.js index.wasm
+echo "✓ Cleaned"
 
 # Common flags for both builds
 COMMON_FLAGS=(
@@ -41,42 +45,40 @@ COMMON_FLAGS=(
     -std=c++17
 )
 
-# Build standard version
+# Build standard version (optimized)
 build_standard() {
     echo ""
-    echo "Building standard version..."
+    echo "Building unified version..."
     emcc csv_converter.cpp \
         -o csv_converter.js \
         "${COMMON_FLAGS[@]}" \
-        -O2
+        -O3 \
+        -flto
 
     if [ $? -eq 0 ]; then
-        echo "✓ Standard build successful"
+        echo "✓ Build successful"
         return 0
     else
-        echo "✗ Standard build failed"
+        echo "✗ Build failed"
         return 1
     fi
 }
 
-# Build optimized version for large files
-build_optimized() {
+# Build debug version
+build_debug() {
     echo ""
-    echo "Building optimized version for large files..."
-    emcc csv_converter_optimized.cpp \
+    echo "Building debug version..."
+    emcc csv_converter.cpp \
         -o csv_converter.js \
         "${COMMON_FLAGS[@]}" \
-        -O3 \
-        -flto \
-        -s AGGRESSIVE_VARIABLE_ELIMINATION=1 \
-        -s DISABLE_EXCEPTION_CATCHING=0 \
-        --closure 1
+        -O0 \
+        -g
 
     if [ $? -eq 0 ]; then
-        echo "✓ Optimized build successful"
+        echo "✓ Debug build successful"
         return 0
     else
-        echo "✗ Optimized build failed"
+        echo "✗ Debug build failed"
         return 1
     fi
 }
@@ -86,20 +88,8 @@ case $BUILD_TYPE in
     "standard")
         build_standard
         ;;
-    "optimized")
-        build_optimized
-        ;;
-    "both")
-        build_standard
-        if [ $? -eq 0 ]; then
-            mv csv_converter.js csv_converter_standard.js
-            mv csv_converter.wasm csv_converter_standard.wasm
-        fi
-        build_optimized
-        if [ $? -eq 0 ]; then
-            mv csv_converter.js csv_converter_optimized.js
-            mv csv_converter.wasm csv_converter_optimized.wasm
-        fi
+    "debug")
+        build_debug
         ;;
 esac
 
@@ -112,9 +102,8 @@ echo "Generated files:"
 ls -lh *.js *.wasm 2>/dev/null | awk '{print "  " $9 " (" $5 ")"}'
 echo ""
 echo "Usage:"
-echo "  ./build.sh           # Build standard version"
-echo "  ./build.sh optimized # Build optimized version (for large files)"
-echo "  ./build.sh both      # Build both versions"
+echo "  ./build.sh        # Build optimized version"
+echo "  ./build.sh debug  # Build debug version"
 echo ""
 echo "To test, start a local server:"
 echo "  python3 -m http.server 8080"

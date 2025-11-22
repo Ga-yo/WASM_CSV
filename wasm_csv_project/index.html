@@ -1,8 +1,6 @@
 <html>
 <head>
   <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
-  <script src="/csv_converter.js" crossorigin="anonymous"></script>
-  <script src="/index.js" crossorigin="anonymous"></script>
   <style>
     /*! tailwindcss v4.1.17 | MIT License | https://tailwindcss.com */
     @layer properties;
@@ -164,7 +162,6 @@
       embed,
       object {
         display: block;
-        vertical-align: middle;
       }
 
       img,
@@ -1038,13 +1035,6 @@
                   <div class="text-[22px] font-semibold text-neutral-900 tracking-[-0.01em]">데이터 분석 시작하기</div>
                   <div class="mt-1 text-neutral-600">CSV 파일을 업로드하여 빠르게 탐색하고 시각화하세요.</div>
                 </div>
-                <div class="flex items-center gap-3">
-                  <button id="btn-upload-top"
-                    class="h-11 px-4 rounded-md bg-neutral-900 text-white text-sm font-medium hover:opacity-90 transition-opacity">
-                    CSV 업로드
-                  </button>
-
-                </div>
               </div>
               <div id="dropzone" class="mx-6 mb-6 rounded-lg border-2 border-dashed border-neutral-300 bg-white">
                 <div class="p-10 flex flex-col items-center justify-center text-center">
@@ -1058,128 +1048,165 @@
                     class="mt-5 inline-flex items-center justify-center h-11 px-4 rounded-md border border-neutral-200 text-sm text-neutral-800 hover:bg-neutral-100 cursor-pointer">
                     <i class="fa-regular fa-file-lines mr-2"></i>파일 선택
                   </label>
-                  <div id="upload-notes" class="mt-3 text-xs text-neutral-500">UTF-8 인코딩 권장, 구분자 자동 감지</div>
+                  <div id="selected-file-info" class="mt-3 flex items-center gap-2">
+                    <span id="selected-file-text" class="text-sm text-neutral-600">선택된 파일 없음</span>
+                    <button id="btn-remove-file" class="hidden h-6 px-2 rounded text-xs text-neutral-500 hover:text-neutral-800 hover:bg-neutral-100">
+                      <i class="fa-solid fa-xmark"></i> 제거
+                    </button>
+                  </div>
+                  <div id="upload-notes" class="mt-2 text-xs text-neutral-500">UTF-8 인코딩 권장, 구분자 자동 감지</div>
                 </div>
               </div>
             </section>
 
+
             <section id="quick-actions" class="mt-6">
               <div class="flex items-center justify-between mb-3">
                 <div class="text-sm font-medium text-neutral-900">빠른 작업</div>
-
               </div>
               <div class="grid grid-cols-3 gap-4">
                 <div id="card-quick-stats"
                   class="border border-neutral-200 rounded-lg bg-white p-4 hover:bg-neutral-50">
                   <div class="flex items-center justify-between">
                     <div class="text-neutral-900 font-medium">요약 통계</div>
-                    <i class="fa-solid fa-percent text-neutral-600"></i>
+                    <i class="fa-solid fa-chart-simple text-neutral-600"></i>
                   </div>
-                  <div class="mt-2 text-sm text-neutral-600">평균, 중앙값, 결측치 등</div>
-                  <button class="mt-4 h-10 w-full rounded-md bg-neutral-900 text-white text-sm">실행</button>
+                  <div class="mt-2 text-sm text-neutral-600">최솟값, 최댓값, 평균, 필터</div>
+                  <button id="btn-show-stats" class="mt-4 h-10 w-full rounded-md bg-neutral-900 text-white text-sm disabled:bg-neutral-300 disabled:cursor-not-allowed" disabled>실행</button>
                 </div>
 
                 <div id="card-quick-viz" class="border border-neutral-200 rounded-lg bg-white p-4 hover:bg-neutral-50">
                   <div class="flex items-center justify-between">
-                    <div class="text-neutral-900 font-medium">시각화</div>
-                    <i class="fa-solid fa-chart-column text-neutral-600"></i>
+                    <div class="text-neutral-900 font-medium">데이터 시각화</div>
+                    <i class="fa-solid fa-chart-bar text-neutral-600"></i>
                   </div>
-                  <div class="mt-2 text-sm text-neutral-600">막대, 선, 산점도</div>
-                  <button
-                    class="mt-4 h-10 w-full rounded-md border border-neutral-200 text-sm text-neutral-800 hover:bg-neutral-100">새
-                    차트</button>
+                  <div class="mt-2 text-sm text-neutral-600">막대, 원형, 선 그래프</div>
+                  <button id="btn-show-data" class="mt-4 h-10 w-full rounded-md border border-neutral-200 text-sm text-neutral-800 hover:bg-neutral-100 disabled:bg-neutral-100 disabled:text-neutral-400 disabled:cursor-not-allowed" disabled>보기</button>
+                </div>
+
+                <div id="card-download" class="border border-neutral-200 rounded-lg bg-white p-4 hover:bg-neutral-50">
+                  <div class="flex items-center justify-between">
+                    <div class="text-neutral-900 font-medium">JSON 다운로드</div>
+                    <i class="fa-solid fa-download text-neutral-600"></i>
+                  </div>
+                  <div class="mt-2 text-sm text-neutral-600">JSON 파일로 저장</div>
+                  <button id="btn-download-json-main" class="mt-4 h-10 w-full rounded-md border border-neutral-200 text-sm text-neutral-800 hover:bg-neutral-100 disabled:bg-neutral-100 disabled:text-neutral-400 disabled:cursor-not-allowed" disabled>다운로드</button>
                 </div>
               </div>
             </section>
 
 
 
-            <section id="insights" class="mt-6 grid grid-cols-2 gap-4">
-
-
-
-            </section>
-            <div id="card-guide" class="border border-neutral-200 rounded-xl bg-white p-5">
-              <div class="flex items-center justify-between">
-                <div class="text-neutral-900 font-medium">업로드 가이드</div>
-                <i class="fa-regular fa-circle-question text-neutral-600"></i>
-              </div>
-              <ul class="mt-3 space-y-2">
-                <li class="flex items-start gap-2 text-sm text-neutral-700">
-                  <i class="fa-solid fa-check mt-1 text-neutral-600"></i>
-                  첫 행을 헤더로 사용하세요.
-                </li>
-                <li class="flex items-start gap-2 text-sm text-neutral-700">
-                  <i class="fa-solid fa-check mt-1 text-neutral-600"></i>
-                  결측치는 비워두거나 NA로 표기하세요.
-                </li>
-                <li class="flex items-start gap-2 text-sm text-neutral-700">
-                  <i class="fa-solid fa-check mt-1 text-neutral-600"></i>
-                  텍스트는 UTF-8 인코딩을 권장합니다.
-                </li>
-              </ul>
-              <button
-                class="mt-4 h-10 w-full rounded-md border border-neutral-200 text-sm text-neutral-800 hover:bg-neutral-100">자세히
-                보기</button>
-            </div>
-
-            <div id="help-strip" class="sticky bottom-0 mt-6 border border-neutral-200 rounded-lg bg-white p-4">
-              <div class="flex items-center justify-between">
-                <div class="flex items-center gap-3">
-                  <i class="fa-regular fa-life-ring text-neutral-700"></i>
-                  <div class="text-sm text-neutral-800">CSV 업로드가 어려우신가요? 가이드를 확인하세요.</div>
-                </div>
-                <div class="flex items-center gap-2">
-                  <button
-                    class="h-10 px-4 rounded-md border border-neutral-200 text-sm text-neutral-800 hover:bg-neutral-100">가이드</button>
-                  <button class="h-10 px-4 rounded-md bg-neutral-900 text-white text-sm">문의</button>
-                </div>
-              </div>
-            </div>
           </main>
         </div>
       </div>
     </div>
   </div>
 
-  <!-- JSON Result Modal -->
-  <div id="result-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50 flex items-center justify-center">
-    <div class="bg-white rounded-xl w-[90%] max-w-[1200px] max-h-[90vh] overflow-hidden flex flex-col">
+  <!-- Stats Modal -->
+  <div id="stats-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+    <div class="bg-white rounded-xl w-[90%] max-w-4xl max-h-[80vh] flex flex-col">
       <div class="p-4 border-b border-neutral-200 flex items-center justify-between">
-        <div class="text-lg font-semibold text-neutral-900">변환 결과</div>
-        <div class="flex items-center gap-2">
-          <button id="btn-download-json" class="h-9 px-3 rounded-md bg-neutral-900 text-white text-sm">다운로드</button>
-          <button id="btn-close-modal"
-            class="h-9 px-3 rounded-md border border-neutral-200 text-sm text-neutral-800 hover:bg-neutral-100">닫기</button>
+        <div class="text-lg font-semibold text-neutral-900">요약 통계</div>
+        <button id="btn-close-stats-modal" class="h-8 w-8 rounded hover:bg-neutral-100 flex items-center justify-center">
+          <i class="fa-solid fa-xmark text-neutral-600"></i>
+        </button>
+      </div>
+      <div class="p-4 border-b border-neutral-200">
+        <div class="flex items-center gap-4 text-sm">
+          <span class="text-neutral-600">타입 필터:</span>
+          <label class="flex items-center gap-1">
+            <input type="checkbox" class="type-filter" value="all" checked>
+            <span>전체</span>
+          </label>
+          <label class="flex items-center gap-1">
+            <input type="checkbox" class="type-filter" value="숫자">
+            <span>숫자</span>
+          </label>
+          <label class="flex items-center gap-1">
+            <input type="checkbox" class="type-filter" value="문자">
+            <span>문자</span>
+          </label>
         </div>
       </div>
-      <div class="p-4 overflow-auto flex-1">
-        <pre id="json-output" class="text-sm bg-neutral-50 p-4 rounded-lg overflow-auto"
-          style="max-height: 60vh;"></pre>
-      </div>
-      <div id="result-stats" class="p-4 border-t border-neutral-200 bg-neutral-50">
-        <div class="grid grid-cols-4 gap-4 text-sm">
-          <div><span class="text-neutral-500">파일명:</span> <span id="stat-filename" class="font-medium">-</span></div>
-          <div><span class="text-neutral-500">행 수:</span> <span id="stat-rows" class="font-medium">-</span></div>
-          <div><span class="text-neutral-500">열 수:</span> <span id="stat-cols" class="font-medium">-</span></div>
-          <div><span class="text-neutral-500">파일 크기:</span> <span id="stat-size" class="font-medium">-</span></div>
-        </div>
+      <div class="flex-1 overflow-auto p-4">
+        <table id="stats-table" class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-neutral-200">
+              <th data-sort="column" class="text-left p-2 cursor-pointer hover:bg-neutral-50">컬럼 <i class="fa-solid fa-sort text-neutral-400 ml-1"></i></th>
+              <th data-sort="type" class="text-left p-2 cursor-pointer hover:bg-neutral-50">타입 <i class="fa-solid fa-sort text-neutral-400 ml-1"></i></th>
+              <th data-sort="count" class="text-right p-2 cursor-pointer hover:bg-neutral-50">개수 <i class="fa-solid fa-sort text-neutral-400 ml-1"></i></th>
+              <th data-sort="unique" class="text-right p-2 cursor-pointer hover:bg-neutral-50">고유값 <i class="fa-solid fa-sort text-neutral-400 ml-1"></i></th>
+              <th data-sort="min" class="text-right p-2 cursor-pointer hover:bg-neutral-50">최솟값 <i class="fa-solid fa-sort text-neutral-400 ml-1"></i></th>
+              <th data-sort="max" class="text-right p-2 cursor-pointer hover:bg-neutral-50">최댓값 <i class="fa-solid fa-sort text-neutral-400 ml-1"></i></th>
+              <th data-sort="avg" class="text-right p-2 cursor-pointer hover:bg-neutral-50">평균 <i class="fa-solid fa-sort text-neutral-400 ml-1"></i></th>
+            </tr>
+          </thead>
+          <tbody id="stats-table-body">
+          </tbody>
+        </table>
       </div>
     </div>
   </div>
 
-  <!-- Loading Indicator -->
-  <div id="loading" class="fixed inset-0 bg-black bg-opacity-30 hidden z-50 flex items-center justify-center">
-    <div class="bg-white rounded-lg p-6 flex items-center gap-3">
-      <div class="animate-spin h-5 w-5 border-2 border-neutral-900 border-t-transparent rounded-full"></div>
-      <span class="text-neutral-800">변환 중...</span>
+  <!-- Data Modal -->
+  <div id="data-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+    <div class="bg-white rounded-xl w-[95%] max-w-6xl max-h-[85vh] flex flex-col">
+      <div class="p-4 border-b border-neutral-200 flex items-center justify-between">
+        <div class="text-lg font-semibold text-neutral-900">데이터 시각화</div>
+        <button id="btn-close-data-modal" class="h-8 w-8 rounded hover:bg-neutral-100 flex items-center justify-center">
+          <i class="fa-solid fa-xmark text-neutral-600"></i>
+        </button>
+      </div>
+      <div class="p-4 border-b border-neutral-200 flex items-center gap-4">
+        <input id="data-search" type="text" placeholder="검색..." class="h-9 px-3 rounded-md border border-neutral-200 text-sm flex-1">
+        <div class="flex items-center gap-2 text-sm text-neutral-600">
+          <span>페이지당:</span>
+          <select id="page-size" class="h-9 px-2 rounded-md border border-neutral-200">
+            <option value="10">10</option>
+            <option value="20" selected>20</option>
+            <option value="50">50</option>
+            <option value="100">100</option>
+          </select>
+        </div>
+      </div>
+      <div class="flex-1 overflow-auto">
+        <table id="data-table" class="w-full text-sm">
+          <thead id="data-table-head" class="sticky top-0 bg-white">
+          </thead>
+          <tbody id="data-table-body">
+          </tbody>
+        </table>
+      </div>
+      <div class="p-4 border-t border-neutral-200 flex items-center justify-between">
+        <div id="data-info" class="text-sm text-neutral-600"></div>
+        <div class="flex items-center gap-2">
+          <button id="btn-prev-page" class="h-8 px-3 rounded border border-neutral-200 text-sm hover:bg-neutral-100 disabled:opacity-50 disabled:cursor-not-allowed">이전</button>
+          <span id="page-info" class="text-sm text-neutral-600"></span>
+          <button id="btn-next-page" class="h-8 px-3 rounded border border-neutral-200 text-sm hover:bg-neutral-100 disabled:opacity-50 disabled:cursor-not-allowed">다음</button>
+        </div>
+      </div>
     </div>
   </div>
 
   <script src="csv_converter.js"></script>
   <script>
     let convertedJson = null;
+    let jsonData = null;
     let currentFilename = '';
+
+    // Statistics table state
+    let statsData = [];
+    let statsSortKey = null;
+    let statsSortAsc = true;
+    let statsTypeFilter = 'all';
+
+    // Data table state
+    let currentPage = 1;
+    let pageSize = 20;
+    let filteredData = [];
+    let allData = [];
+    let allHeaders = [];
 
     // Wait for WASM module to load
     var Module = {
@@ -1192,11 +1219,6 @@
     function initializeApp() {
       const fileInput = document.getElementById('file-input');
       const dropzone = document.getElementById('dropzone');
-      const btnUploadTop = document.getElementById('btn-upload-top');
-      const modal = document.getElementById('result-modal');
-      const btnCloseModal = document.getElementById('btn-close-modal');
-      const btnDownload = document.getElementById('btn-download-json');
-      const loading = document.getElementById('loading');
 
       // File input change handler
       fileInput.addEventListener('change', (e) => {
@@ -1206,9 +1228,9 @@
         }
       });
 
-      // Button click to trigger file input
-      btnUploadTop.addEventListener('click', () => {
-        fileInput.click();
+      // Remove file button
+      document.getElementById('btn-remove-file').addEventListener('click', () => {
+        resetFileState();
       });
 
       // Drag and drop handlers
@@ -1233,64 +1255,315 @@
         }
       });
 
-      // Modal handlers
-      btnCloseModal.addEventListener('click', () => {
-        modal.classList.add('hidden');
-      });
+      // Quick action buttons
+      document.getElementById('btn-show-stats').addEventListener('click', showStatsModal);
+      document.getElementById('btn-show-data').addEventListener('click', showDataModal);
+      document.getElementById('btn-download-json-main').addEventListener('click', downloadJson);
 
-      modal.addEventListener('click', (e) => {
-        if (e.target === modal) {
-          modal.classList.add('hidden');
+      // Stats modal close
+      document.getElementById('btn-close-stats-modal').addEventListener('click', () => {
+        document.getElementById('stats-modal').classList.add('hidden');
+      });
+      document.getElementById('stats-modal').addEventListener('click', (e) => {
+        if (e.target.id === 'stats-modal') {
+          document.getElementById('stats-modal').classList.add('hidden');
         }
       });
 
-      // Download handler
-      btnDownload.addEventListener('click', () => {
-        if (convertedJson) {
-          const blob = new Blob([convertedJson], { type: 'application/json' });
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = currentFilename.replace('.csv', '.json');
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
-          URL.revokeObjectURL(url);
+      // Data modal close
+      document.getElementById('btn-close-data-modal').addEventListener('click', () => {
+        document.getElementById('data-modal').classList.add('hidden');
+      });
+      document.getElementById('data-modal').addEventListener('click', (e) => {
+        if (e.target.id === 'data-modal') {
+          document.getElementById('data-modal').classList.add('hidden');
         }
+      });
+
+      // Stats table sorting
+      document.querySelectorAll('#stats-table th[data-sort]').forEach(th => {
+        th.addEventListener('click', () => {
+          const key = th.dataset.sort;
+          if (statsSortKey === key) {
+            statsSortAsc = !statsSortAsc;
+          } else {
+            statsSortKey = key;
+            statsSortAsc = true;
+          }
+          renderStatsTableBody();
+        });
+      });
+
+      // Type filter
+      document.querySelectorAll('.type-filter').forEach(cb => {
+        cb.addEventListener('change', (e) => {
+          if (e.target.value === 'all') {
+            statsTypeFilter = 'all';
+            document.querySelectorAll('.type-filter').forEach(c => c.checked = c.value === 'all');
+          } else {
+            document.querySelector('.type-filter[value="all"]').checked = false;
+            const checked = Array.from(document.querySelectorAll('.type-filter:checked')).map(c => c.value).filter(v => v !== 'all');
+            statsTypeFilter = checked.length > 0 ? checked : 'all';
+            if (statsTypeFilter === 'all') {
+              document.querySelector('.type-filter[value="all"]').checked = true;
+            }
+          }
+          renderStatsTableBody();
+        });
+      });
+
+      // Data search
+      document.getElementById('data-search').addEventListener('input', (e) => {
+        const query = e.target.value.toLowerCase();
+        if (query) {
+          filteredData = allData.filter(row => {
+            return Object.values(row).some(val =>
+              String(val).toLowerCase().includes(query)
+            );
+          });
+        } else {
+          filteredData = allData;
+        }
+        currentPage = 1;
+        renderTablePage();
       });
     }
 
-    async function processFile(file) {
-      const loading = document.getElementById('loading');
-      const modal = document.getElementById('result-modal');
+    function resetFileState() {
+      convertedJson = null;
+      jsonData = null;
+      currentFilename = '';
+      document.getElementById('btn-show-stats').disabled = true;
+      document.getElementById('btn-show-data').disabled = true;
+      document.getElementById('btn-download-json-main').disabled = true;
+      document.getElementById('file-input').value = '';
+      document.getElementById('selected-file-text').textContent = '선택된 파일 없음';
+      document.getElementById('btn-remove-file').classList.add('hidden');
+    }
 
-      loading.classList.remove('hidden');
+    async function processFile(file) {
       currentFilename = file.name;
+
+      // Update selected file info immediately
+      const fileSizeFormatted = formatBytes(file.size);
+      document.getElementById('selected-file-text').textContent = `${file.name} (${fileSizeFormatted})`;
+      document.getElementById('btn-remove-file').classList.remove('hidden');
 
       try {
         const content = await readFileContent(file);
 
-        // Convert CSV to JSON using WASM
+        // Convert CSV to JSON using WASM (background)
         convertedJson = Module.convertToJson(content, file.name);
+        jsonData = JSON.parse(convertedJson);
 
-        // Parse JSON to get metadata
-        const jsonData = JSON.parse(convertedJson);
-
-        // Update UI
-        document.getElementById('json-output').textContent = JSON.stringify(jsonData, null, 2);
-        document.getElementById('stat-filename').textContent = jsonData.metadata.filename;
-        document.getElementById('stat-rows').textContent = jsonData.metadata.total_rows.toLocaleString();
-        document.getElementById('stat-cols').textContent = jsonData.metadata.total_columns;
-        document.getElementById('stat-size').textContent = formatBytes(jsonData.metadata.file_size_bytes);
-
-        loading.classList.add('hidden');
-        modal.classList.remove('hidden');
+        // Enable buttons
+        document.getElementById('btn-show-stats').disabled = false;
+        document.getElementById('btn-show-data').disabled = false;
+        document.getElementById('btn-download-json-main').disabled = false;
 
       } catch (error) {
-        loading.classList.add('hidden');
         console.error('Error processing file:', error);
         alert('파일 처리 중 오류가 발생했습니다: ' + error.message);
+        resetFileState();
       }
+    }
+
+    function downloadJson() {
+      if (convertedJson) {
+        const blob = new Blob([convertedJson], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = currentFilename.replace('.csv', '.json');
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }
+    }
+
+    function showStatsModal() {
+      if (!jsonData) return;
+
+      // Prepare stats data
+      statsData = jsonData.schema.columns.map(col => {
+        const colStats = jsonData.statistics.columns[col.name];
+        return {
+          name: col.name,
+          type: colStats.type,
+          min: colStats.type === 'integer' || colStats.type === 'float' ? colStats.min : (colStats.min_length || colStats.min || 0),
+          max: colStats.type === 'integer' || colStats.type === 'float' ? colStats.max : (colStats.max_length || colStats.max || 0),
+          mean: colStats.mean || 0,
+          null_count: colStats.null_count,
+          unique_count: colStats.unique_count,
+          raw: colStats
+        };
+      });
+
+      renderStatsTableBody();
+      document.getElementById('stats-modal').classList.remove('hidden');
+    }
+
+    function renderStatsTableBody() {
+      let data = [...statsData];
+
+      // Apply type filter
+      if (statsTypeFilter !== 'all') {
+        const filters = Array.isArray(statsTypeFilter) ? statsTypeFilter : [statsTypeFilter];
+        data = data.filter(d => filters.includes(d.type));
+      }
+
+      // Apply sorting
+      if (statsSortKey) {
+        data.sort((a, b) => {
+          let va = a[statsSortKey];
+          let vb = b[statsSortKey];
+          if (typeof va === 'string') {
+            va = va.toLowerCase();
+            vb = vb.toLowerCase();
+          }
+          if (va < vb) return statsSortAsc ? -1 : 1;
+          if (va > vb) return statsSortAsc ? 1 : -1;
+          return 0;
+        });
+      }
+
+      const tbody = document.getElementById('stats-table-body');
+      tbody.innerHTML = data.map(d => {
+        const typeLabel = {
+          'integer': '정수',
+          'float': '실수',
+          'string': '문자열',
+          'boolean': '불리언',
+          'date': '날짜'
+        }[d.type] || d.type;
+
+        let minVal, maxVal, meanVal;
+        if (d.type === 'integer' || d.type === 'float') {
+          minVal = d.raw.min !== undefined ? d.raw.min.toLocaleString() : '-';
+          maxVal = d.raw.max !== undefined ? d.raw.max.toLocaleString() : '-';
+          meanVal = d.raw.mean !== undefined ? d.raw.mean.toFixed(2) : '-';
+        } else if (d.type === 'string') {
+          minVal = d.raw.min_length !== undefined ? `${d.raw.min_length}자` : '-';
+          maxVal = d.raw.max_length !== undefined ? `${d.raw.max_length}자` : '-';
+          meanVal = '-';
+        } else {
+          minVal = d.raw.min || '-';
+          maxVal = d.raw.max || '-';
+          meanVal = '-';
+        }
+
+        return `
+          <tr class="border-b border-neutral-100 hover:bg-neutral-50">
+            <td class="p-3 font-medium text-neutral-900">${d.name}</td>
+            <td class="p-3">
+              <span class="px-2 py-1 rounded text-xs font-medium bg-neutral-100 text-neutral-700">${typeLabel}</span>
+            </td>
+            <td class="p-3 text-right text-neutral-700">${minVal}</td>
+            <td class="p-3 text-right text-neutral-700">${maxVal}</td>
+            <td class="p-3 text-right text-neutral-700">${meanVal}</td>
+            <td class="p-3 text-right text-neutral-700">${d.null_count}</td>
+            <td class="p-3 text-right text-neutral-700">${d.unique_count}</td>
+          </tr>
+        `;
+      }).join('');
+
+      document.getElementById('stats-count').textContent = data.length;
+    }
+
+    function showDataModal() {
+      if (!jsonData) return;
+
+      allHeaders = jsonData.schema.columns.map(col => col.name);
+      allData = jsonData.data;
+      filteredData = allData;
+      currentPage = 1;
+
+      // Render table header
+      const thead = document.getElementById('data-table-head');
+      thead.innerHTML = `
+        <tr>
+          <th class="p-3 text-left font-semibold text-neutral-700 text-xs">#</th>
+          ${allHeaders.map(h => `<th class="p-3 text-left font-semibold text-neutral-700 text-xs whitespace-nowrap">${h}</th>`).join('')}
+        </tr>
+      `;
+
+      document.getElementById('data-search').value = '';
+      renderTablePage();
+      document.getElementById('data-modal').classList.remove('hidden');
+    }
+
+    function renderTablePage() {
+      const tbody = document.getElementById('data-table-body');
+      const totalRows = filteredData.length;
+      const totalPages = Math.ceil(totalRows / pageSize);
+      const start = (currentPage - 1) * pageSize;
+      const end = Math.min(start + pageSize, totalRows);
+      const pageData = filteredData.slice(start, end);
+
+      document.getElementById('data-showing').textContent = pageData.length;
+      document.getElementById('data-total').textContent = totalRows;
+
+      tbody.innerHTML = pageData.map((row, idx) => `
+        <tr class="border-b border-neutral-100 hover:bg-neutral-50">
+          <td class="p-3 text-neutral-500 text-xs">${start + idx + 1}</td>
+          ${allHeaders.map(h => {
+            const val = row[h];
+            const displayVal = val === null ? '<span class="text-neutral-400">null</span>' : val;
+            return `<td class="p-3 text-neutral-700 text-xs whitespace-nowrap">${displayVal}</td>`;
+          }).join('')}
+        </tr>
+      `).join('');
+
+      renderPagination(totalPages);
+    }
+
+    function renderPagination(totalPages) {
+      const container = document.getElementById('data-pagination');
+      if (totalPages <= 1) {
+        container.innerHTML = '';
+        return;
+      }
+
+      let html = '';
+      html += `<button onclick="goToPage(${currentPage - 1})"
+        class="h-8 px-3 rounded text-sm ${currentPage === 1 ? 'text-neutral-300 cursor-not-allowed' : 'text-neutral-700 hover:bg-neutral-100'}"
+        ${currentPage === 1 ? 'disabled' : ''}>이전</button>`;
+
+      const maxVisible = 5;
+      let startPage = Math.max(1, currentPage - Math.floor(maxVisible / 2));
+      let endPage = Math.min(totalPages, startPage + maxVisible - 1);
+      if (endPage - startPage < maxVisible - 1) {
+        startPage = Math.max(1, endPage - maxVisible + 1);
+      }
+
+      if (startPage > 1) {
+        html += `<button onclick="goToPage(1)" class="h-8 w-8 rounded text-sm text-neutral-700 hover:bg-neutral-100">1</button>`;
+        if (startPage > 2) html += `<span class="text-neutral-400">...</span>`;
+      }
+
+      for (let i = startPage; i <= endPage; i++) {
+        html += `<button onclick="goToPage(${i})"
+          class="h-8 w-8 rounded text-sm ${i === currentPage ? 'bg-neutral-900 text-white' : 'text-neutral-700 hover:bg-neutral-100'}">${i}</button>`;
+      }
+
+      if (endPage < totalPages) {
+        if (endPage < totalPages - 1) html += `<span class="text-neutral-400">...</span>`;
+        html += `<button onclick="goToPage(${totalPages})" class="h-8 w-8 rounded text-sm text-neutral-700 hover:bg-neutral-100">${totalPages}</button>`;
+      }
+
+      html += `<button onclick="goToPage(${currentPage + 1})"
+        class="h-8 px-3 rounded text-sm ${currentPage === totalPages ? 'text-neutral-300 cursor-not-allowed' : 'text-neutral-700 hover:bg-neutral-100'}"
+        ${currentPage === totalPages ? 'disabled' : ''}>다음</button>`;
+
+      container.innerHTML = html;
+    }
+
+    function goToPage(page) {
+      const totalPages = Math.ceil(filteredData.length / pageSize);
+      if (page < 1 || page > totalPages) return;
+      currentPage = page;
+      renderTablePage();
     }
 
     async function readFileContent(file) {
