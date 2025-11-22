@@ -1135,11 +1135,11 @@
             <tr class="border-b border-neutral-200">
               <th data-sort="column" class="text-left p-2 cursor-pointer hover:bg-neutral-50">컬럼 <i class="fa-solid fa-sort text-neutral-400 ml-1"></i></th>
               <th data-sort="type" class="text-left p-2 cursor-pointer hover:bg-neutral-50">타입 <i class="fa-solid fa-sort text-neutral-400 ml-1"></i></th>
-              <th data-sort="count" class="text-right p-2 cursor-pointer hover:bg-neutral-50">개수 <i class="fa-solid fa-sort text-neutral-400 ml-1"></i></th>
-              <th data-sort="unique" class="text-right p-2 cursor-pointer hover:bg-neutral-50">고유값 <i class="fa-solid fa-sort text-neutral-400 ml-1"></i></th>
               <th data-sort="min" class="text-right p-2 cursor-pointer hover:bg-neutral-50">최솟값 <i class="fa-solid fa-sort text-neutral-400 ml-1"></i></th>
               <th data-sort="max" class="text-right p-2 cursor-pointer hover:bg-neutral-50">최댓값 <i class="fa-solid fa-sort text-neutral-400 ml-1"></i></th>
               <th data-sort="avg" class="text-right p-2 cursor-pointer hover:bg-neutral-50">평균 <i class="fa-solid fa-sort text-neutral-400 ml-1"></i></th>
+              <th data-sort="null_count" class="text-right p-2 cursor-pointer hover:bg-neutral-50">Null 개수 <i class="fa-solid fa-sort text-neutral-400 ml-1"></i></th>
+              <th data-sort="unique_count" class="text-right p-2 cursor-pointer hover:bg-neutral-50">고유값 개수 <i class="fa-solid fa-sort text-neutral-400 ml-1"></i></th>
             </tr>
           </thead>
           <tbody id="stats-table-body">
@@ -1158,37 +1158,39 @@
           <i class="fa-solid fa-xmark text-neutral-600"></i>
         </button>
       </div>
-      <div class="p-4 border-b border-neutral-200 flex items-center gap-4">
-        <input id="data-search" type="text" placeholder="검색..." class="h-9 px-3 rounded-md border border-neutral-200 text-sm flex-1">
-        <div class="flex items-center gap-2 text-sm text-neutral-600">
-          <span>페이지당:</span>
-          <select id="page-size" class="h-9 px-2 rounded-md border border-neutral-200">
-            <option value="10">10</option>
-            <option value="20" selected>20</option>
-            <option value="50">50</option>
-            <option value="100">100</option>
+      <div class="p-4 border-b border-neutral-200 flex items-center gap-4 text-sm">
+        <div class="flex items-center gap-2">
+          <label for="chart-type" class="text-neutral-600">차트 종류:</label>
+          <select id="chart-type" class="h-9 px-2 rounded-md border border-neutral-200">
+            <option value="bar">막대 차트</option>
+            <option value="line">선 차트</option>
+            <option value="pie">파이 차트</option>
           </select>
         </div>
-      </div>
-      <div class="flex-1 overflow-auto">
-        <table id="data-table" class="w-full text-sm">
-          <thead id="data-table-head" class="sticky top-0 bg-white">
-          </thead>
-          <tbody id="data-table-body">
-          </tbody>
-        </table>
-      </div>
-      <div class="p-4 border-t border-neutral-200 flex items-center justify-between">
-        <div id="data-info" class="text-sm text-neutral-600"></div>
         <div class="flex items-center gap-2">
-          <button id="btn-prev-page" class="h-8 px-3 rounded border border-neutral-200 text-sm hover:bg-neutral-100 disabled:opacity-50 disabled:cursor-not-allowed">이전</button>
-          <span id="page-info" class="text-sm text-neutral-600"></span>
-          <button id="btn-next-page" class="h-8 px-3 rounded border border-neutral-200 text-sm hover:bg-neutral-100 disabled:opacity-50 disabled:cursor-not-allowed">다음</button>
+          <label for="chart-x-axis" class="text-neutral-600">X축 (레이블):</label>
+          <select id="chart-x-axis" class="h-9 px-2 rounded-md border border-neutral-200"></select>
+        </div>
+        <div class="flex items-center gap-2">
+          <label for="chart-y-axis" class="text-neutral-600">Y축 (값):</label>
+          <select id="chart-y-axis" class="h-9 px-2 rounded-md border border-neutral-200"></select>
+        </div>
+      </div>
+      <div class="flex-1 overflow-auto p-4">
+        <div id="chart-container" class="relative h-full min-h-[400px]">
+          <canvas id="myChart"></canvas>
+        </div>
+        <div id="data-table-container" class="hidden">
+          <table id="data-table" class="w-full text-sm">
+            <thead id="data-table-head" class="sticky top-0 bg-white"></thead>
+            <tbody id="data-table-body"></tbody>
+          </select>
         </div>
       </div>
     </div>
   </div>
 
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="csv_converter.js"></script>
   <script>
     let convertedJson = null;
@@ -1207,6 +1209,7 @@
     let filteredData = [];
     let allData = [];
     let allHeaders = [];
+    let myChart = null;
 
     // Wait for WASM module to load
     var Module = {
@@ -1312,21 +1315,11 @@
         });
       });
 
-      // Data search
-      document.getElementById('data-search').addEventListener('input', (e) => {
-        const query = e.target.value.toLowerCase();
-        if (query) {
-          filteredData = allData.filter(row => {
-            return Object.values(row).some(val =>
-              String(val).toLowerCase().includes(query)
-            );
-          });
-        } else {
-          filteredData = allData;
-        }
-        currentPage = 1;
-        renderTablePage();
-      });
+      // Chart options change handlers
+      document.getElementById('chart-type').addEventListener('change', renderChart);
+      document.getElementById('chart-x-axis').addEventListener('change', renderChart);
+      document.getElementById('chart-y-axis').addEventListener('change', renderChart);
+
     }
 
     function resetFileState() {
@@ -1352,11 +1345,15 @@
       try {
         const content = await readFileContent(file);
 
-        // Convert CSV to JSON using WASM (background)
+        // Convert CSV to JSON using WASM
         convertedJson = Module.convertToJson(content, file.name);
         jsonData = JSON.parse(convertedJson);
 
-        // Enable buttons
+        // --- 디버깅을 위한 코드 ---
+        console.log("jsonData 객체:", jsonData);
+        // -----------------------
+
+        // Enable buttons only after successful parsing
         document.getElementById('btn-show-stats').disabled = false;
         document.getElementById('btn-show-data').disabled = false;
         document.getElementById('btn-download-json-main').disabled = false;
@@ -1441,10 +1438,10 @@
         let minVal, maxVal, meanVal;
         if (d.type === 'integer' || d.type === 'float') {
           minVal = d.raw.min !== undefined ? d.raw.min.toLocaleString() : '-';
-          maxVal = d.raw.max !== undefined ? d.raw.max.toLocaleString() : '-';
+          maxVal = d.raw.max !== undefined ? d.raw.max.toLocaleString() : '-'; 
           meanVal = d.raw.mean !== undefined ? d.raw.mean.toFixed(2) : '-';
         } else if (d.type === 'string') {
-          minVal = d.raw.min_length !== undefined ? `${d.raw.min_length}자` : '-';
+          minVal = d.raw.min_length !== undefined ? `${d.raw.min_length}자` : '-'; 
           maxVal = d.raw.max_length !== undefined ? `${d.raw.max_length}자` : '-';
           meanVal = '-';
         } else {
@@ -1456,41 +1453,97 @@
         return `
           <tr class="border-b border-neutral-100 hover:bg-neutral-50">
             <td class="p-3 font-medium text-neutral-900">${d.name}</td>
-            <td class="p-3">
+            <td class="p-3 text-left">
               <span class="px-2 py-1 rounded text-xs font-medium bg-neutral-100 text-neutral-700">${typeLabel}</span>
             </td>
             <td class="p-3 text-right text-neutral-700">${minVal}</td>
             <td class="p-3 text-right text-neutral-700">${maxVal}</td>
             <td class="p-3 text-right text-neutral-700">${meanVal}</td>
-            <td class="p-3 text-right text-neutral-700">${d.null_count}</td>
-            <td class="p-3 text-right text-neutral-700">${d.unique_count}</td>
+            <td class="p-3 text-right text-neutral-700">${d.null_count.toLocaleString()}</td>
+            <td class="p-3 text-right text-neutral-700">${d.unique_count.toLocaleString()}</td>
           </tr>
         `;
       }).join('');
-
-      document.getElementById('stats-count').textContent = data.length;
     }
 
     function showDataModal() {
       if (!jsonData) return;
 
+      console.log("showDataModal: 함수 시작");
       allHeaders = jsonData.schema.columns.map(col => col.name);
       allData = jsonData.data;
       filteredData = allData;
-      currentPage = 1;
+      populateChartSelectors();
 
-      // Render table header
-      const thead = document.getElementById('data-table-head');
-      thead.innerHTML = `
-        <tr>
-          <th class="p-3 text-left font-semibold text-neutral-700 text-xs">#</th>
-          ${allHeaders.map(h => `<th class="p-3 text-left font-semibold text-neutral-700 text-xs whitespace-nowrap">${h}</th>`).join('')}
-        </tr>
-      `;
-
-      document.getElementById('data-search').value = '';
-      renderTablePage();
+      // renderChart()를 호출하기 전에 모달을 먼저 띄웁니다.
       document.getElementById('data-modal').classList.remove('hidden');
+      console.log("showDataModal: 모달 표시됨");
+
+      renderChart();
+    }
+
+    function populateChartSelectors() {
+      const stringCols = jsonData.schema.columns.filter(c => ['string', 'date', 'boolean'].includes(c.type)).map(c => c.name);
+      const numericCols = jsonData.schema.columns.filter(c => ['integer', 'float'].includes(c.type)).map(c => c.name);
+
+      const xAxisSelect = document.getElementById('chart-x-axis');
+      const yAxisSelect = document.getElementById('chart-y-axis');
+
+      console.log("populateChartSelectors: 문자열 컬럼:", stringCols);
+      console.log("populateChartSelectors: 숫자 컬럼:", numericCols);
+
+      xAxisSelect.innerHTML = stringCols.map(c => `<option value="${c}">${c}</option>`).join('');
+      yAxisSelect.innerHTML = numericCols.map(c => `<option value="${c}">${c}</option>`).join('');
+
+      // Set default selection if possible
+      if (stringCols.length > 0) xAxisSelect.value = stringCols[0];
+      if (numericCols.length > 0) yAxisSelect.value = numericCols[0];
+    }
+
+    function renderChart() {
+      if (!jsonData) return;
+
+      console.log("renderChart: 함수 시작");
+      const chartType = document.getElementById('chart-type').value;
+      const xCol = document.getElementById('chart-x-axis').value;
+      const yCol = document.getElementById('chart-y-axis').value;
+      console.log(`renderChart: 선택된 값 - type=${chartType}, x=${xCol}, y=${yCol}`);
+
+      if (!xCol || !yCol) {
+        console.warn("renderChart: X축 또는 Y축으로 사용할 컬럼이 선택되지 않아 차트를 그릴 수 없습니다.");
+        return;
+      }
+
+      const labels = [...new Set(jsonData.data.map(row => row[xCol]))];
+      const data = labels.map(label => {
+        const filtered = jsonData.data.filter(row => row[xCol] === label);
+        return filtered.reduce((sum, row) => sum + (Number(row[yCol]) || 0), 0);
+      });
+
+      const ctx = document.getElementById('myChart').getContext('2d');
+      if (myChart) {
+        myChart.destroy();
+      }
+      myChart = new Chart(ctx, {
+        type: chartType,
+        data: {
+          labels: labels,
+          datasets: [{
+            label: `${xCol} 별 ${yCol}`,
+            data: data,
+            borderWidth: 1
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            y: {
+              beginAtZero: true
+            }
+          }
+        }
+      });
     }
 
     function renderTablePage() {
@@ -1498,65 +1551,6 @@
       const totalRows = filteredData.length;
       const totalPages = Math.ceil(totalRows / pageSize);
       const start = (currentPage - 1) * pageSize;
-      const end = Math.min(start + pageSize, totalRows);
-      const pageData = filteredData.slice(start, end);
-
-      document.getElementById('data-showing').textContent = pageData.length;
-      document.getElementById('data-total').textContent = totalRows;
-
-      tbody.innerHTML = pageData.map((row, idx) => `
-        <tr class="border-b border-neutral-100 hover:bg-neutral-50">
-          <td class="p-3 text-neutral-500 text-xs">${start + idx + 1}</td>
-          ${allHeaders.map(h => {
-            const val = row[h];
-            const displayVal = val === null ? '<span class="text-neutral-400">null</span>' : val;
-            return `<td class="p-3 text-neutral-700 text-xs whitespace-nowrap">${displayVal}</td>`;
-          }).join('')}
-        </tr>
-      `).join('');
-
-      renderPagination(totalPages);
-    }
-
-    function renderPagination(totalPages) {
-      const container = document.getElementById('data-pagination');
-      if (totalPages <= 1) {
-        container.innerHTML = '';
-        return;
-      }
-
-      let html = '';
-      html += `<button onclick="goToPage(${currentPage - 1})"
-        class="h-8 px-3 rounded text-sm ${currentPage === 1 ? 'text-neutral-300 cursor-not-allowed' : 'text-neutral-700 hover:bg-neutral-100'}"
-        ${currentPage === 1 ? 'disabled' : ''}>이전</button>`;
-
-      const maxVisible = 5;
-      let startPage = Math.max(1, currentPage - Math.floor(maxVisible / 2));
-      let endPage = Math.min(totalPages, startPage + maxVisible - 1);
-      if (endPage - startPage < maxVisible - 1) {
-        startPage = Math.max(1, endPage - maxVisible + 1);
-      }
-
-      if (startPage > 1) {
-        html += `<button onclick="goToPage(1)" class="h-8 w-8 rounded text-sm text-neutral-700 hover:bg-neutral-100">1</button>`;
-        if (startPage > 2) html += `<span class="text-neutral-400">...</span>`;
-      }
-
-      for (let i = startPage; i <= endPage; i++) {
-        html += `<button onclick="goToPage(${i})"
-          class="h-8 w-8 rounded text-sm ${i === currentPage ? 'bg-neutral-900 text-white' : 'text-neutral-700 hover:bg-neutral-100'}">${i}</button>`;
-      }
-
-      if (endPage < totalPages) {
-        if (endPage < totalPages - 1) html += `<span class="text-neutral-400">...</span>`;
-        html += `<button onclick="goToPage(${totalPages})" class="h-8 w-8 rounded text-sm text-neutral-700 hover:bg-neutral-100">${totalPages}</button>`;
-      }
-
-      html += `<button onclick="goToPage(${currentPage + 1})"
-        class="h-8 px-3 rounded text-sm ${currentPage === totalPages ? 'text-neutral-300 cursor-not-allowed' : 'text-neutral-700 hover:bg-neutral-100'}"
-        ${currentPage === totalPages ? 'disabled' : ''}>다음</button>`;
-
-      container.innerHTML = html;
     }
 
     function goToPage(page) {
