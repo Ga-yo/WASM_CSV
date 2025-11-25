@@ -1,0 +1,1086 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WASM vs JavaScript CSV 변환 성능 비교</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    h1 {
+      text-align: center;
+      color: #333;
+    }
+    .container {
+      background: white;
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 20px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .upload-section {
+      text-align: center;
+      padding: 40px;
+      border: 2px dashed #ddd;
+      border-radius: 8px;
+      margin-bottom: 20px;
+    }
+    .upload-section input[type="file"] {
+      display: none;
+    }
+    .upload-section label {
+      display: inline-block;
+      padding: 12px 24px;
+      background: #333;
+      color: white;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    .upload-section label:hover {
+      background: #555;
+    }
+    .file-info {
+      margin-top: 15px;
+      color: #666;
+    }
+    .benchmark-controls {
+      display: flex;
+      gap: 10px;
+      justify-content: center;
+      margin-bottom: 20px;
+    }
+    button {
+      padding: 12px 24px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+    }
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    .btn-wasm {
+      background: #2563eb;
+      color: white;
+    }
+    .btn-js {
+      background: #f59e0b;
+      color: white;
+    }
+    .btn-both {
+      background: #10b981;
+      color: white;
+    }
+    .results {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+    .result-card {
+      padding: 20px;
+      border-radius: 8px;
+      border: 1px solid #e5e5e5;
+    }
+    .result-card h3 {
+      margin: 0 0 15px 0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .result-card.wasm {
+      border-left: 4px solid #2563eb;
+    }
+    .result-card.js {
+      border-left: 4px solid #f59e0b;
+    }
+    .metric {
+      display: flex;
+      justify-content: space-between;
+      padding: 8px 0;
+      border-bottom: 1px solid #f0f0f0;
+    }
+    .metric:last-child {
+      border-bottom: none;
+    }
+    .metric-label {
+      color: #666;
+    }
+    .metric-value {
+      font-weight: 600;
+      font-family: monospace;
+    }
+    .comparison {
+      margin-top: 20px;
+      padding: 20px;
+      background: #f0fdf4;
+      border-radius: 8px;
+      text-align: center;
+    }
+    .comparison.faster {
+      background: #f0fdf4;
+    }
+    .speedup {
+      font-size: 2em;
+      font-weight: bold;
+      color: #10b981;
+    }
+    .progress {
+      margin-top: 10px;
+      color: #666;
+      font-style: italic;
+    }
+    .code-section {
+      margin-top: 20px;
+    }
+    .code-section h3 {
+      margin-bottom: 10px;
+    }
+    pre {
+      background: #1e1e1e;
+      color: #d4d4d4;
+      padding: 15px;
+      border-radius: 6px;
+      overflow-x: auto;
+      font-size: 12px;
+      line-height: 1.5;
+    }
+    .tab-container {
+      margin-top: 20px;
+    }
+    .tabs {
+      display: flex;
+      border-bottom: 1px solid #e5e5e5;
+    }
+    .tab {
+      padding: 10px 20px;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      color: #666;
+    }
+    .tab.active {
+      border-bottom-color: #333;
+      color: #333;
+      font-weight: 500;
+    }
+    .tab-content {
+      display: none;
+      padding: 20px 0;
+    }
+    .tab-content.active {
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <h1>WASM vs JavaScript CSV 변환 성능 비교</h1>
+
+  <div class="container">
+    <div class="upload-section">
+      <input type="file" id="file-input" accept=".csv">
+      <label for="file-input">CSV 파일 선택</label>
+      <div class="file-info" id="file-info">선택된 파일 없음</div>
+    </div>
+
+    <div class="benchmark-controls">
+      <button class="btn-wasm" id="btn-wasm" disabled>WASM (기존)</button>
+      <button class="btn-js" id="btn-js" disabled>JavaScript</button>
+      <button class="btn-both" id="btn-both" disabled>비교 (기존)</button>
+    </div>
+
+    <div class="benchmark-controls">
+      <button class="btn-wasm" id="btn-wasm-dm" disabled style="background: #7c3aed;">WASM (DataManager)</button>
+      <button class="btn-both" id="btn-both-dm" disabled style="background: #8b5cf6;">비교 (최적화)</button>
+    </div>
+
+    <div id="progress" class="progress" style="text-align: center;"></div>
+
+    <div class="results">
+      <div class="result-card wasm">
+        <h3>
+          <span style="color: #2563eb;">●</span> WASM (C++)
+        </h3>
+        <div class="metric">
+          <span class="metric-label">변환 시간</span>
+          <span class="metric-value" id="wasm-time">-</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">JSON 크기</span>
+          <span class="metric-value" id="wasm-size">-</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">행 수</span>
+          <span class="metric-value" id="wasm-rows">-</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">컬럼 수</span>
+          <span class="metric-value" id="wasm-cols">-</span>
+        </div>
+      </div>
+
+      <div class="result-card js">
+        <h3>
+          <span style="color: #f59e0b;">●</span> JavaScript
+        </h3>
+        <div class="metric">
+          <span class="metric-label">변환 시간</span>
+          <span class="metric-value" id="js-time">-</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">JSON 크기</span>
+          <span class="metric-value" id="js-size">-</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">행 수</span>
+          <span class="metric-value" id="js-rows">-</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">컬럼 수</span>
+          <span class="metric-value" id="js-cols">-</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="comparison" id="comparison" style="display: none;">
+      <div class="speedup" id="speedup"></div>
+      <div id="comparison-text"></div>
+    </div>
+  </div>
+
+  <div class="container tab-container">
+    <div class="tabs">
+      <div class="tab active" data-tab="js-code">JavaScript 구현</div>
+      <div class="tab" data-tab="usage">사용 방법</div>
+    </div>
+
+    <div class="tab-content active" id="js-code">
+      <h3>JavaScript CSV to JSON 변환기</h3>
+      <p>아래 코드를 별도 파일로 저장하여 사용할 수 있습니다.</p>
+      <pre><code>// csv-converter.js - JavaScript CSV to JSON Converter
+
+function convertCsvToJson(csvContent, filename) {
+  const startTime = performance.now();
+
+  // 1. 전처리: BOM 제거 및 줄바꿈 정규화
+  let content = csvContent;
+  if (content.charCodeAt(0) === 0xFEFF) {
+    content = content.slice(1);
+  }
+  content = content.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+
+  // 2. 구분자 자동 감지
+  const delimiter = detectDelimiter(content);
+
+  // 3. CSV 파싱
+  const { headers, rows } = parseCSV(content, delimiter);
+
+  if (headers.length === 0) {
+    return JSON.stringify({
+      error: 'Empty or invalid CSV file',
+      metadata: { filename }
+    });
+  }
+
+  // 4. 타입 감지 및 통계 계산
+  const columnTypes = [];
+  const statistics = {};
+
+  for (let i = 0; i < headers.length; i++) {
+    const values = rows.map(row => row[i] || '');
+    const type = detectType(values);
+    columnTypes.push(type);
+    statistics[headers[i]] = calculateStats(values, type);
+  }
+
+  // 5. JSON 구조 생성
+  const result = {
+    metadata: {
+      filename,
+      total_rows: rows.length,
+      total_columns: headers.length,
+      file_size_bytes: csvContent.length,
+      encoding: 'UTF-8',
+      delimiter: delimiter === '\t' ? '\\t' : delimiter,
+      has_header: true,
+      created_at: new Date().toISOString(),
+      processing_time_ms: 0
+    },
+    schema: {
+      columns: headers.map((name, i) => ({
+        index: i,
+        name,
+        type: columnTypes[i],
+        nullable: statistics[name].null_count > 0
+      }))
+    },
+    statistics: { columns: statistics },
+    data: rows.map(row => {
+      const obj = {};
+      headers.forEach((header, i) => {
+        const value = row[i] || '';
+        obj[header] = convertValue(value, columnTypes[i]);
+      });
+      return obj;
+    }),
+    errors: []
+  };
+
+  result.metadata.processing_time_ms = performance.now() - startTime;
+
+  return JSON.stringify(result, null, 2);
+}
+
+function detectDelimiter(content) {
+  const lines = content.split('\n').slice(0, 5);
+  const sample = lines.join('\n');
+
+  let commaCount = 0, tabCount = 0, semicolonCount = 0;
+  let inQuotes = false;
+
+  for (const char of sample) {
+    if (char === '"') inQuotes = !inQuotes;
+    else if (!inQuotes) {
+      if (char === ',') commaCount++;
+      else if (char === '\t') tabCount++;
+      else if (char === ';') semicolonCount++;
+    }
+  }
+
+  if (tabCount > commaCount && tabCount > semicolonCount) return '\t';
+  if (semicolonCount > commaCount) return ';';
+  return ',';
+}
+
+function parseCSV(content, delimiter) {
+  const rows = [];
+  let headers = [];
+  let currentRow = [];
+  let field = '';
+  let inQuotes = false;
+  let isFirstRow = true;
+
+  for (let i = 0; i < content.length; i++) {
+    const char = content[i];
+
+    if (char === '"') {
+      if (inQuotes && content[i + 1] === '"') {
+        field += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (char === delimiter && !inQuotes) {
+      currentRow.push(field.trim());
+      field = '';
+    } else if (char === '\n' && !inQuotes) {
+      currentRow.push(field.trim());
+      field = '';
+
+      if (currentRow.some(f => f !== '')) {
+        if (isFirstRow) {
+          headers = currentRow;
+          isFirstRow = false;
+        } else {
+          rows.push(currentRow);
+        }
+      }
+      currentRow = [];
+    } else {
+      field += char;
+    }
+  }
+
+  // 마지막 행 처리
+  if (field || currentRow.length > 0) {
+    currentRow.push(field.trim());
+    if (currentRow.some(f => f !== '')) {
+      if (isFirstRow) {
+        headers = currentRow;
+      } else {
+        rows.push(currentRow);
+      }
+    }
+  }
+
+  // 행 길이 정규화
+  rows.forEach(row => {
+    while (row.length < headers.length) row.push('');
+    if (row.length > headers.length) row.length = headers.length;
+  });
+
+  return { headers, rows };
+}
+
+function detectType(values) {
+  let allInt = true, allFloat = true, allBool = true, allDate = true;
+  let nonNullCount = 0;
+
+  for (const val of values) {
+    if (isNull(val)) continue;
+    nonNullCount++;
+
+    if (allInt && !isInteger(val)) allInt = false;
+    if (allFloat && !isFloat(val) && !isInteger(val)) allFloat = false;
+    if (allBool && !isBoolean(val)) allBool = false;
+    if (allDate && !isDate(val)) allDate = false;
+
+    if (!allInt && !allFloat && !allBool && !allDate) break;
+  }
+
+  if (nonNullCount === 0) return 'string';
+  if (allBool) return 'boolean';
+  if (allDate) return 'date';
+  if (allInt) return 'integer';
+  if (allFloat) return 'float';
+  return 'string';
+}
+
+function isNull(val) {
+  if (!val || val === '') return true;
+  const lower = val.toLowerCase();
+  return ['null', 'na', 'n/a', 'nan', '-'].includes(lower);
+}
+
+function isInteger(val) {
+  return /^[+-]?\d+$/.test(val);
+}
+
+function isFloat(val) {
+  return /^[+-]?\d*\.?\d+([eE][+-]?\d+)?$/.test(val) && val.includes('.');
+}
+
+function isBoolean(val) {
+  const lower = val.toLowerCase();
+  return ['true', 'false', 'yes', 'no', '1', '0'].includes(lower);
+}
+
+function isDate(val) {
+  return /^\d{4}[-\/]\d{2}[-\/]\d{2}$/.test(val);
+}
+
+function calculateStats(values, type) {
+  const stats = {
+    type,
+    null_count: 0,
+    unique_count: 0
+  };
+
+  const uniqueSet = new Set();
+  const numericValues = [];
+
+  for (const val of values) {
+    if (isNull(val)) {
+      stats.null_count++;
+      continue;
+    }
+    uniqueSet.add(val);
+
+    if (type === 'integer' || type === 'float') {
+      numericValues.push(parseFloat(val));
+    }
+  }
+
+  stats.unique_count = uniqueSet.size;
+
+  if (numericValues.length > 0) {
+    stats.min = Math.min(...numericValues);
+    stats.max = Math.max(...numericValues);
+    stats.mean = numericValues.reduce((a, b) => a + b, 0) / numericValues.length;
+
+    const squaredDiffs = numericValues.map(v => Math.pow(v - stats.mean, 2));
+    stats.std_dev = Math.sqrt(squaredDiffs.reduce((a, b) => a + b, 0) / numericValues.length);
+  }
+
+  return stats;
+}
+
+function convertValue(val, type) {
+  if (isNull(val)) return null;
+
+  switch (type) {
+    case 'integer':
+      return parseInt(val, 10);
+    case 'float':
+      return parseFloat(val);
+    case 'boolean':
+      const lower = val.toLowerCase();
+      return lower === 'true' || lower === 'yes' || lower === '1';
+    default:
+      return val;
+  }
+}
+
+// Export for use
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = { convertCsvToJson };
+}</code></pre>
+    </div>
+
+    <div class="tab-content" id="usage">
+      <h3>사용 방법</h3>
+
+      <h4>1. 이 벤치마크 페이지 사용</h4>
+      <pre><code># 로컬 서버 실행
+python3 -m http.server 8080
+
+# 브라우저에서 열기
+http://localhost:8080/benchmark.html</code></pre>
+
+      <h4>2. JavaScript 버전 단독 사용</h4>
+      <pre><code>&lt;script src="csv-converter.js"&gt;&lt;/script&gt;
+&lt;script&gt;
+  const csvContent = "name,age,city\nJohn,30,Seoul\nJane,25,Busan";
+  const jsonResult = convertCsvToJson(csvContent, "test.csv");
+  console.log(jsonResult);
+&lt;/script&gt;</code></pre>
+
+      <h4>3. Node.js에서 사용</h4>
+      <pre><code>const { convertCsvToJson } = require('./csv-converter.js');
+const fs = require('fs');
+
+const csvContent = fs.readFileSync('data.csv', 'utf8');
+const jsonResult = convertCsvToJson(csvContent, 'data.csv');
+fs.writeFileSync('output.json', jsonResult);</code></pre>
+
+      <h4>4. WASM 버전 사용</h4>
+      <pre><code>&lt;script src="csv_converter.js"&gt;&lt;/script&gt;
+&lt;script&gt;
+  var Module = {
+    onRuntimeInitialized: function() {
+      const csvContent = "name,age,city\nJohn,30,Seoul";
+      const jsonResult = Module.convertToJson(csvContent, "test.csv");
+      console.log(jsonResult);
+    }
+  };
+&lt;/script&gt;</code></pre>
+    </div>
+  </div>
+
+  <script src="csv_converter.js"></script>
+  <script>
+    // JavaScript CSV Converter (인라인 버전)
+    function convertCsvToJsonJS(csvContent, filename) {
+      const startTime = performance.now();
+
+      let content = csvContent;
+      if (content.charCodeAt(0) === 0xFEFF) {
+        content = content.slice(1);
+      }
+      content = content.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+
+      const delimiter = detectDelimiterJS(content);
+      const { headers, rows } = parseCSVJS(content, delimiter);
+
+      if (headers.length === 0) {
+        return JSON.stringify({
+          error: 'Empty or invalid CSV file',
+          metadata: { filename }
+        });
+      }
+
+      const columnTypes = [];
+      const statistics = {};
+
+      for (let i = 0; i < headers.length; i++) {
+        const values = rows.map(row => row[i] || '');
+        const type = detectTypeJS(values);
+        columnTypes.push(type);
+        statistics[headers[i]] = calculateStatsJS(values, type);
+      }
+
+      const result = {
+        metadata: {
+          filename,
+          total_rows: rows.length,
+          total_columns: headers.length,
+          file_size_bytes: csvContent.length,
+          encoding: 'UTF-8',
+          delimiter: delimiter === '\t' ? '\\t' : delimiter,
+          has_header: true,
+          created_at: new Date().toISOString()
+        },
+        schema: {
+          columns: headers.map((name, i) => ({
+            index: i,
+            name,
+            type: columnTypes[i],
+            nullable: statistics[name].null_count > 0
+          }))
+        },
+        statistics: { columns: statistics },
+        data: rows.map(row => {
+          const obj = {};
+          headers.forEach((header, i) => {
+            const value = row[i] || '';
+            obj[header] = convertValueJS(value, columnTypes[i]);
+          });
+          return obj;
+        }),
+        errors: []
+      };
+
+      return JSON.stringify(result);
+    }
+
+    // Optimized JS function - only parsing and statistics (no JSON generation)
+    function parseAndCalculateStatsJS(csvContent, filename) {
+      let content = csvContent;
+      if (content.charCodeAt(0) === 0xFEFF) {
+        content = content.slice(1);
+      }
+      content = content.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+
+      const delimiter = detectDelimiterJS(content);
+      const { headers, rows } = parseCSVJS(content, delimiter);
+
+      if (headers.length === 0) {
+        return { error: 'Empty CSV' };
+      }
+
+      // Collect column values
+      const columnValues = headers.map(() => []);
+      for (const row of rows) {
+        for (let i = 0; i < headers.length; i++) {
+          columnValues[i].push(row[i] || '');
+        }
+      }
+
+      // Detect types
+      const columnTypes = columnValues.map(values => detectTypeJS(values));
+
+      // Calculate statistics
+      const statistics = {};
+      for (let i = 0; i < headers.length; i++) {
+        statistics[headers[i]] = calculateStatsJS(columnValues[i], columnTypes[i]);
+      }
+
+      return {
+        metadata: {
+          filename,
+          total_rows: rows.length,
+          total_columns: headers.length,
+          file_size_bytes: csvContent.length
+        },
+        statistics
+      };
+    }
+
+    function detectDelimiterJS(content) {
+      const lines = content.split('\n').slice(0, 5);
+      const sample = lines.join('\n');
+
+      let commaCount = 0, tabCount = 0, semicolonCount = 0;
+      let inQuotes = false;
+
+      for (const char of sample) {
+        if (char === '"') inQuotes = !inQuotes;
+        else if (!inQuotes) {
+          if (char === ',') commaCount++;
+          else if (char === '\t') tabCount++;
+          else if (char === ';') semicolonCount++;
+        }
+      }
+
+      if (tabCount > commaCount && tabCount > semicolonCount) return '\t';
+      if (semicolonCount > commaCount) return ';';
+      return ',';
+    }
+
+    function parseCSVJS(content, delimiter) {
+      const rows = [];
+      let headers = [];
+      let currentRow = [];
+      let field = '';
+      let inQuotes = false;
+      let isFirstRow = true;
+
+      for (let i = 0; i < content.length; i++) {
+        const char = content[i];
+
+        if (char === '"') {
+          if (inQuotes && content[i + 1] === '"') {
+            field += '"';
+            i++;
+          } else {
+            inQuotes = !inQuotes;
+          }
+        } else if (char === delimiter && !inQuotes) {
+          currentRow.push(field.trim());
+          field = '';
+        } else if (char === '\n' && !inQuotes) {
+          currentRow.push(field.trim());
+          field = '';
+
+          if (currentRow.some(f => f !== '')) {
+            if (isFirstRow) {
+              headers = currentRow;
+              isFirstRow = false;
+            } else {
+              rows.push(currentRow);
+            }
+          }
+          currentRow = [];
+        } else {
+          field += char;
+        }
+      }
+
+      if (field || currentRow.length > 0) {
+        currentRow.push(field.trim());
+        if (currentRow.some(f => f !== '')) {
+          if (isFirstRow) {
+            headers = currentRow;
+          } else {
+            rows.push(currentRow);
+          }
+        }
+      }
+
+      rows.forEach(row => {
+        while (row.length < headers.length) row.push('');
+        if (row.length > headers.length) row.length = headers.length;
+      });
+
+      return { headers, rows };
+    }
+
+    function detectTypeJS(values) {
+      let allInt = true, allFloat = true, allBool = true, allDate = true;
+      let nonNullCount = 0;
+
+      for (const val of values) {
+        if (isNullJS(val)) continue;
+        nonNullCount++;
+
+        if (allInt && !isIntegerJS(val)) allInt = false;
+        if (allFloat && !isFloatJS(val) && !isIntegerJS(val)) allFloat = false;
+        if (allBool && !isBooleanJS(val)) allBool = false;
+        if (allDate && !isDateJS(val)) allDate = false;
+
+        if (!allInt && !allFloat && !allBool && !allDate) break;
+      }
+
+      if (nonNullCount === 0) return 'string';
+      if (allBool) return 'boolean';
+      if (allDate) return 'date';
+      if (allInt) return 'integer';
+      if (allFloat) return 'float';
+      return 'string';
+    }
+
+    function isNullJS(val) {
+      if (!val || val === '') return true;
+      const lower = val.toLowerCase();
+      return ['null', 'na', 'n/a', 'nan', '-'].includes(lower);
+    }
+
+    function isIntegerJS(val) {
+      return /^[+-]?\d+$/.test(val);
+    }
+
+    function isFloatJS(val) {
+      return /^[+-]?\d*\.?\d+([eE][+-]?\d+)?$/.test(val) && (val.includes('.') || val.toLowerCase().includes('e'));
+    }
+
+    function isBooleanJS(val) {
+      const lower = val.toLowerCase();
+      return ['true', 'false', 'yes', 'no', '1', '0'].includes(lower);
+    }
+
+    function isDateJS(val) {
+      return /^\d{4}[-\/]\d{2}[-\/]\d{2}$/.test(val);
+    }
+
+    function calculateStatsJS(values, type) {
+      const stats = {
+        type,
+        null_count: 0,
+        unique_count: 0
+      };
+
+      const uniqueSet = new Set();
+      const numericValues = [];
+
+      for (const val of values) {
+        if (isNullJS(val)) {
+          stats.null_count++;
+          continue;
+        }
+        uniqueSet.add(val);
+
+        if (type === 'integer' || type === 'float') {
+          numericValues.push(parseFloat(val));
+        }
+      }
+
+      stats.unique_count = uniqueSet.size;
+
+      if (numericValues.length > 0) {
+        // Use loop instead of spread operator to avoid stack overflow on large arrays
+        let min = numericValues[0];
+        let max = numericValues[0];
+        let sum = 0;
+
+        for (let i = 0; i < numericValues.length; i++) {
+          const val = numericValues[i];
+          if (val < min) min = val;
+          if (val > max) max = val;
+          sum += val;
+        }
+
+        stats.min = min;
+        stats.max = max;
+        stats.mean = sum / numericValues.length;
+
+        // Calculate std_dev using loop
+        let squaredDiffSum = 0;
+        for (let i = 0; i < numericValues.length; i++) {
+          squaredDiffSum += Math.pow(numericValues[i] - stats.mean, 2);
+        }
+        stats.std_dev = Math.sqrt(squaredDiffSum / numericValues.length);
+      }
+
+      return stats;
+    }
+
+    function convertValueJS(val, type) {
+      if (isNullJS(val)) return null;
+
+      switch (type) {
+        case 'integer':
+          return parseInt(val, 10);
+        case 'float':
+          return parseFloat(val);
+        case 'boolean':
+          const lower = val.toLowerCase();
+          return lower === 'true' || lower === 'yes' || lower === '1';
+        default:
+          return val;
+      }
+    }
+
+    // Benchmark Logic
+    let csvContent = null;
+    let currentFilename = '';
+    let wasmReady = false;
+
+    var Module = {
+      onRuntimeInitialized: function() {
+        wasmReady = true;
+        console.log('WASM module loaded');
+        updateButtons();
+      }
+    };
+
+    function formatBytes(bytes) {
+      if (bytes === 0) return '0 Bytes';
+      const k = 1024;
+      const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+
+    function formatTime(ms) {
+      if (ms < 1000) return ms.toFixed(2) + ' ms';
+      return (ms / 1000).toFixed(2) + ' s';
+    }
+
+    function updateButtons() {
+      const hasFile = csvContent !== null;
+      document.getElementById('btn-wasm').disabled = !hasFile || !wasmReady;
+      document.getElementById('btn-js').disabled = !hasFile;
+      document.getElementById('btn-both').disabled = !hasFile || !wasmReady;
+      document.getElementById('btn-wasm-dm').disabled = !hasFile || !wasmReady;
+      document.getElementById('btn-both-dm').disabled = !hasFile || !wasmReady;
+    }
+
+    document.getElementById('file-input').addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      currentFilename = file.name;
+      document.getElementById('file-info').textContent = `${file.name} (${formatBytes(file.size)})`;
+
+      csvContent = await file.text();
+      updateButtons();
+
+      // Reset results
+      ['wasm-time', 'wasm-size', 'wasm-rows', 'wasm-cols', 'js-time', 'js-size', 'js-rows', 'js-cols'].forEach(id => {
+        document.getElementById(id).textContent = '-';
+      });
+      document.getElementById('comparison').style.display = 'none';
+    });
+
+    async function runWasmBenchmark() {
+      document.getElementById('progress').textContent = 'WASM 변환 중...';
+
+      await new Promise(resolve => setTimeout(resolve, 10));
+
+      const start = performance.now();
+      // Use convertToJson for fair comparison (full data conversion)
+      // Note: For very large files (>100MB), this may cause memory issues
+      const result = Module.convertToJson(csvContent, currentFilename);
+      const end = performance.now();
+
+      const json = JSON.parse(result);
+
+      document.getElementById('wasm-time').textContent = formatTime(end - start);
+      document.getElementById('wasm-size').textContent = formatBytes(result.length);
+      document.getElementById('wasm-rows').textContent = json.metadata.total_rows.toLocaleString();
+      document.getElementById('wasm-cols').textContent = json.metadata.total_columns;
+      document.getElementById('progress').textContent = '';
+
+      return end - start;
+    }
+
+    async function runJsBenchmark() {
+      document.getElementById('progress').textContent = 'JavaScript 변환 중...';
+
+      await new Promise(resolve => setTimeout(resolve, 10));
+
+      const start = performance.now();
+      const result = convertCsvToJsonJS(csvContent, currentFilename);
+      const end = performance.now();
+
+      const json = JSON.parse(result);
+
+      document.getElementById('js-time').textContent = formatTime(end - start);
+      document.getElementById('js-size').textContent = formatBytes(result.length);
+      document.getElementById('js-rows').textContent = json.metadata.total_rows.toLocaleString();
+      document.getElementById('js-cols').textContent = json.metadata.total_columns;
+      document.getElementById('progress').textContent = '';
+
+      return end - start;
+    }
+
+    function showComparison(wasmTime, jsTime) {
+      const comparison = document.getElementById('comparison');
+      const speedup = document.getElementById('speedup');
+      const text = document.getElementById('comparison-text');
+
+      if (wasmTime < jsTime) {
+        const factor = (jsTime / wasmTime).toFixed(1);
+        speedup.textContent = `${factor}x 빠름`;
+        speedup.style.color = '#10b981';
+        text.textContent = `WASM이 JavaScript보다 ${factor}배 빠릅니다`;
+      } else {
+        const factor = (wasmTime / jsTime).toFixed(1);
+        speedup.textContent = `${factor}x 느림`;
+        speedup.style.color = '#ef4444';
+        text.textContent = `JavaScript가 WASM보다 ${factor}배 빠릅니다`;
+      }
+
+      comparison.style.display = 'block';
+    }
+
+    document.getElementById('btn-wasm').addEventListener('click', async () => {
+      await runWasmBenchmark();
+    });
+
+    document.getElementById('btn-js').addEventListener('click', async () => {
+      await runJsBenchmark();
+    });
+
+    document.getElementById('btn-both').addEventListener('click', async () => {
+      const wasmTime = await runWasmBenchmark();
+      const jsTime = await runJsBenchmark();
+      showComparison(wasmTime, jsTime);
+    });
+
+    // New DataManager API benchmark
+    async function runWasmDataManagerBenchmark() {
+      document.getElementById('progress').textContent = 'WASM (DataManager) 변환 중...';
+
+      await new Promise(resolve => setTimeout(resolve, 10));
+
+      const start = performance.now();
+
+      // Load CSV data (parsing + statistics calculation)
+      const loaded = Module.dm_loadCSV(csvContent, currentFilename);
+      if (!loaded) {
+        document.getElementById('progress').textContent = '로드 실패';
+        return 0;
+      }
+
+      // Get metadata, schema, and statistics
+      const metadata = JSON.parse(Module.dm_getMetadata());
+      const schema = JSON.parse(Module.dm_getSchema());
+      const statistics = JSON.parse(Module.dm_getStatistics());
+
+      // Get first page of data (simulating pagination)
+      const firstPage = JSON.parse(Module.dm_getRows(0, 100));
+
+      const end = performance.now();
+
+      // Calculate approximate total size (metadata + schema + stats)
+      const totalSize = Module.dm_getMetadata().length +
+                       Module.dm_getSchema().length +
+                       Module.dm_getStatistics().length;
+
+      document.getElementById('wasm-time').textContent = formatTime(end - start);
+      document.getElementById('wasm-size').textContent = formatBytes(totalSize) + ' (메타)';
+      document.getElementById('wasm-rows').textContent = metadata.total_rows.toLocaleString();
+      document.getElementById('wasm-cols').textContent = metadata.total_columns;
+      document.getElementById('progress').textContent = '';
+
+      // Clear data after benchmark
+      Module.dm_clear();
+
+      return end - start;
+    }
+
+    document.getElementById('btn-wasm-dm').addEventListener('click', async () => {
+      await runWasmDataManagerBenchmark();
+    });
+
+    // Optimized JS benchmark (parsing + stats only, no JSON stringify)
+    async function runJsOptimizedBenchmark() {
+      document.getElementById('progress').textContent = 'JavaScript (최적화) 변환 중...';
+
+      await new Promise(resolve => setTimeout(resolve, 10));
+
+      const start = performance.now();
+      const result = parseAndCalculateStatsJS(csvContent, currentFilename);
+      const end = performance.now();
+
+      document.getElementById('js-time').textContent = formatTime(end - start);
+      document.getElementById('js-size').textContent = '- (객체)';
+      document.getElementById('js-rows').textContent = result.metadata.total_rows.toLocaleString();
+      document.getElementById('js-cols').textContent = result.metadata.total_columns;
+      document.getElementById('progress').textContent = '';
+
+      return end - start;
+    }
+
+    document.getElementById('btn-wasm-dm').addEventListener('click', async () => {
+      await runWasmDataManagerBenchmark();
+    });
+
+    document.getElementById('btn-both-dm').addEventListener('click', async () => {
+      const wasmTime = await runWasmDataManagerBenchmark();
+      const jsTime = await runJsOptimizedBenchmark();
+      showComparison(wasmTime, jsTime);
+    });
+
+    // Tab switching
+    document.querySelectorAll('.tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+
+        tab.classList.add('active');
+        document.getElementById(tab.dataset.tab).classList.add('active');
+      });
+    });
+  </script>
+</body>
+</html>

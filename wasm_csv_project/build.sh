@@ -23,6 +23,8 @@ fi
 BUILD_TYPE="standard"
 if [ "$1" == "debug" ] || [ "$1" == "-d" ]; then
     BUILD_TYPE="debug"
+elif [ "$1" == "simd" ] || [ "$1" == "-s" ]; then
+    BUILD_TYPE="simd"
 fi
 
 # Clean previous build files
@@ -86,6 +88,26 @@ build_debug() {
     fi
 }
 
+# Build SIMD-optimized version
+build_simd() {
+    echo ""
+    echo "Building SIMD-optimized version..."
+    emcc csv_converter.cpp \
+        -o csv_converter.js \
+        "${COMMON_FLAGS[@]}" \
+        -O3 \
+        -flto \
+        -msimd128
+
+    if [ $? -eq 0 ]; then
+        echo "✓ SIMD build successful"
+        return 0
+    else
+        echo "✗ SIMD build failed"
+        return 1
+    fi
+}
+
 # Execute builds
 case $BUILD_TYPE in
     "standard")
@@ -93,6 +115,9 @@ case $BUILD_TYPE in
         ;;
     "debug")
         build_debug
+        ;;
+    "simd")
+        build_simd
         ;;
 esac
 
@@ -107,6 +132,7 @@ echo ""
 echo "Usage:"
 echo "  ./build.sh        # Build optimized version"
 echo "  ./build.sh debug  # Build debug version"
+echo "  ./build.sh simd   # Build SIMD-optimized version"
 echo ""
 echo "To test, start a local server:"
 echo "  python3 -m http.server 8080"

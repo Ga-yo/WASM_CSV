@@ -711,8 +711,372 @@ std::string convertToJsonAuto(const std::string& csvContent, const std::string& 
     return convertToJson(csvContent, filename);
 }
 
+// =========================
+// DataManager - Optimized API
+// Data stays in WASM memory, only requested portions are returned
+// =========================
+
+class DataManager {
+private:
+    std::vector<std::string> headers;
+    std::vector<std::vector<std::string>> rows;
+    std::vector<DataType> columnTypes;
+    std::vector<ColumnStats> stats;
+    std::string filename;
+    char delimiter;
+    size_t originalSize;
+    bool isLoaded;
+
+public:
+    DataManager() : delimiter(','), originalSize(0), isLoaded(false) {}
+
+    // Parse and store CSV data in WASM memory
+    bool loadCSV(const std::string& csvContent, const std::string& fname) {
+        filename = fname;
+        originalSize = csvContent.size();
+
+        // Preprocess
+        std::string content = removeBOM(csvContent);
+        content = normalizeLineEndings(content);
+
+        // Parse CSV
+        CSVParseResult parsed = parseCSV(content);
+
+        headers = std::move(parsed.headers);
+        rows = std::move(parsed.rows);
+        delimiter = parsed.delimiter;
+
+        if (headers.empty()) {
+            isLoaded = false;
+            return false;
+        }
+
+        int numColumns = headers.size();
+
+        // Normalize row lengths
+        for (auto& row : rows) {
+            while ((int)row.size() < numColumns) {
+                row.push_back("");
+            }
+            if ((int)row.size() > numColumns) {
+                row.resize(numColumns);
+            }
+        }
+
+        // Detect types using sample data
+        std::vector<std::vector<std::string>> sampleData(numColumns);
+        int sampleSize = std::min((int)rows.size(), 1000);
+
+        for (int r = 0; r < sampleSize; r++) {
+            for (int i = 0; i < numColumns && i < (int)rows[r].size(); i++) {
+                sampleData[i].push_back(rows[r][i]);
+            }
+        }
+
+        columnTypes.resize(numColumns);
+        stats.resize(numColumns);
+
+        for (int i = 0; i < numColumns; i++) {
+            columnTypes[i] = detectColumnType(sampleData[i]);
+            stats[i].type = columnTypes[i];
+        }
+
+        // Calculate statistics for all rows
+        std::vector<std::unordered_set<std::string>> uniqueValues(numColumns);
+
+        for (const auto& row : rows) {
+            for (int i = 0; i < numColumns && i < (int)row.size(); i++) {
+                const std::string& val = row[i];
+
+                if (TypeChecker::isNull(val)) {
+                    stats[i].nullCount++;
+                    continue;
+                }
+
+                if (uniqueValues[i].size() < 10000) {
+                    uniqueValues[i].insert(val);
+                }
+
+                if (columnTypes[i] == DataType::INTEGER || columnTypes[i] == DataType::FLOAT) {
+                    try {
+                        double num = std::stod(val);
+                        stats[i].addNumericValue(num);
+                    } catch (...) {}
+                } else if (columnTypes[i] == DataType::STRING) {
+                    uint32_t len = val.length();
+                    stats[i].minLength = std::min(stats[i].minLength, len);
+                    stats[i].maxLength = std::max(stats[i].maxLength, len);
+                } else if (columnTypes[i] == DataType::BOOLEAN) {
+                    std::string lower = val;
+                    std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+                    if (lower == "true" || lower == "yes" || lower == "1") {
+                        stats[i].trueCount++;
+                    } else {
+                        stats[i].falseCount++;
+                    }
+                } else if (columnTypes[i] == DataType::DATE) {
+                    if (stats[i].minDate.empty() || val < stats[i].minDate) {
+                        stats[i].minDate = val;
+                    }
+                    if (stats[i].maxDate.empty() || val > stats[i].maxDate) {
+                        stats[i].maxDate = val;
+                    }
+                }
+            }
+        }
+
+        for (int i = 0; i < numColumns; i++) {
+            stats[i].uniqueCount = uniqueValues[i].size();
+            if (stats[i].minLength == UINT32_MAX) stats[i].minLength = 0;
+        }
+
+        isLoaded = true;
+        return true;
+    }
+
+    // Get metadata only (lightweight)
+    std::string getMetadata() {
+        if (!isLoaded) {
+            return "{\"error\": \"No data loaded\"}";
+        }
+
+        std::ostringstream json;
+        std::time_t now = std::time(nullptr);
+        char timestamp[30];
+        std::strftime(timestamp, sizeof(timestamp), "%Y-%m-%dT%H:%M:%SZ", std::gmtime(&now));
+
+        json << "{\n";
+        json << "  \"filename\": \"" << escapeJson(filename) << "\",\n";
+        json << "  \"total_rows\": " << rows.size() << ",\n";
+        json << "  \"total_columns\": " << headers.size() << ",\n";
+        json << "  \"file_size_bytes\": " << originalSize << ",\n";
+        json << "  \"encoding\": \"UTF-8\",\n";
+        json << "  \"delimiter\": \"" << (delimiter == '\t' ? "\\t" : std::string(1, delimiter)) << "\",\n";
+        json << "  \"has_header\": true,\n";
+        json << "  \"created_at\": \"" << timestamp << "\"\n";
+        json << "}";
+
+        return json.str();
+    }
+
+    // Get schema information
+    std::string getSchema() {
+        if (!isLoaded) {
+            return "{\"error\": \"No data loaded\"}";
+        }
+
+        int numColumns = headers.size();
+        int numRows = rows.size();
+
+        std::ostringstream json;
+        json << "{\n";
+        json << "  \"columns\": [\n";
+
+        for (int i = 0; i < numColumns; i++) {
+            json << "    {\n";
+            json << "      \"index\": " << i << ",\n";
+            json << "      \"name\": \"" << escapeJson(headers[i]) << "\",\n";
+            json << "      \"type\": \"" << dataTypeToString(columnTypes[i]) << "\",\n";
+            json << "      \"nullable\": " << (stats[i].nullCount > 0 ? "true" : "false") << ",\n";
+            json << "      \"unique\": " << (stats[i].uniqueCount == (uint32_t)(numRows - stats[i].nullCount) ? "true" : "false") << "\n";
+            json << "    }" << (i < numColumns - 1 ? "," : "") << "\n";
+        }
+
+        json << "  ]\n";
+        json << "}";
+
+        return json.str();
+    }
+
+    // Get statistics only
+    std::string getStatistics() {
+        if (!isLoaded) {
+            return "{\"error\": \"No data loaded\"}";
+        }
+
+        int numColumns = headers.size();
+
+        std::ostringstream json;
+        json << std::fixed << std::setprecision(2);
+        json << "{\n";
+        json << "  \"columns\": {\n";
+
+        for (int i = 0; i < numColumns; i++) {
+            json << "    \"" << escapeJson(headers[i]) << "\": {\n";
+            json << "      \"type\": \"" << dataTypeToString(columnTypes[i]) << "\",\n";
+            json << "      \"null_count\": " << stats[i].nullCount << ",\n";
+            json << "      \"unique_count\": " << stats[i].uniqueCount;
+
+            if (columnTypes[i] == DataType::INTEGER || columnTypes[i] == DataType::FLOAT) {
+                if (stats[i].count > 0) {
+                    json << ",\n      \"min\": " << stats[i].min;
+                    json << ",\n      \"max\": " << stats[i].max;
+                    json << ",\n      \"mean\": " << stats[i].mean;
+                    json << ",\n      \"std_dev\": " << stats[i].getStdDev();
+                    json << ",\n      \"sum\": " << stats[i].sum;
+                }
+            } else if (columnTypes[i] == DataType::STRING) {
+                json << ",\n      \"min_length\": " << stats[i].minLength;
+                json << ",\n      \"max_length\": " << stats[i].maxLength;
+            } else if (columnTypes[i] == DataType::BOOLEAN) {
+                json << ",\n      \"true_count\": " << stats[i].trueCount;
+                json << ",\n      \"false_count\": " << stats[i].falseCount;
+            } else if (columnTypes[i] == DataType::DATE) {
+                json << ",\n      \"min\": \"" << stats[i].minDate << "\"";
+                json << ",\n      \"max\": \"" << stats[i].maxDate << "\"";
+            }
+
+            json << "\n    }" << (i < numColumns - 1 ? "," : "") << "\n";
+        }
+
+        json << "  }\n";
+        json << "}";
+
+        return json.str();
+    }
+
+    // Get specific rows (pagination support)
+    std::string getRows(int start, int count) {
+        if (!isLoaded) {
+            return "{\"error\": \"No data loaded\"}";
+        }
+
+        int numColumns = headers.size();
+        int numRows = rows.size();
+
+        // Bounds checking
+        if (start < 0) start = 0;
+        if (start >= numRows) {
+            return "{\"rows\": [], \"start\": " + std::to_string(start) + ", \"count\": 0, \"total\": " + std::to_string(numRows) + "}";
+        }
+
+        int end = std::min(start + count, numRows);
+        int actualCount = end - start;
+
+        std::ostringstream json;
+        json << std::fixed << std::setprecision(2);
+        json << "{\n";
+        json << "  \"start\": " << start << ",\n";
+        json << "  \"count\": " << actualCount << ",\n";
+        json << "  \"total\": " << numRows << ",\n";
+        json << "  \"rows\": [\n";
+
+        for (int r = start; r < end; r++) {
+            json << "    {";
+            for (int c = 0; c < numColumns; c++) {
+                std::string value = (c < (int)rows[r].size()) ? rows[r][c] : "";
+                json << "\n      \"" << escapeJson(headers[c]) << "\": ";
+
+                if (TypeChecker::isNull(value)) {
+                    json << "null";
+                } else if (columnTypes[c] == DataType::INTEGER) {
+                    json << value;
+                } else if (columnTypes[c] == DataType::FLOAT) {
+                    try {
+                        json << std::stod(value);
+                    } catch (...) {
+                        json << "\"" << escapeJson(value) << "\"";
+                    }
+                } else if (columnTypes[c] == DataType::BOOLEAN) {
+                    std::string lower = value;
+                    std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+                    json << ((lower == "true" || lower == "yes" || lower == "1") ? "true" : "false");
+                } else {
+                    json << "\"" << escapeJson(value) << "\"";
+                }
+
+                if (c < numColumns - 1) json << ",";
+            }
+            json << "\n    }" << (r < end - 1 ? "," : "") << "\n";
+        }
+
+        json << "  ]\n";
+        json << "}";
+
+        return json.str();
+    }
+
+    // Get total row count
+    int getRowCount() {
+        return isLoaded ? rows.size() : 0;
+    }
+
+    // Get column count
+    int getColumnCount() {
+        return isLoaded ? headers.size() : 0;
+    }
+
+    // Clear loaded data
+    void clear() {
+        headers.clear();
+        rows.clear();
+        columnTypes.clear();
+        stats.clear();
+        filename.clear();
+        originalSize = 0;
+        isLoaded = false;
+    }
+
+    // Check if data is loaded
+    bool hasData() {
+        return isLoaded;
+    }
+};
+
+// Global DataManager instance
+DataManager g_dataManager;
+
+// Wrapper functions for JavaScript bindings
+bool dm_loadCSV(const std::string& csvContent, const std::string& filename) {
+    return g_dataManager.loadCSV(csvContent, filename);
+}
+
+std::string dm_getMetadata() {
+    return g_dataManager.getMetadata();
+}
+
+std::string dm_getSchema() {
+    return g_dataManager.getSchema();
+}
+
+std::string dm_getStatistics() {
+    return g_dataManager.getStatistics();
+}
+
+std::string dm_getRows(int start, int count) {
+    return g_dataManager.getRows(start, count);
+}
+
+int dm_getRowCount() {
+    return g_dataManager.getRowCount();
+}
+
+int dm_getColumnCount() {
+    return g_dataManager.getColumnCount();
+}
+
+void dm_clear() {
+    g_dataManager.clear();
+}
+
+bool dm_hasData() {
+    return g_dataManager.hasData();
+}
+
 EMSCRIPTEN_BINDINGS(csv_converter) {
+    // Legacy API (kept for backward compatibility)
     function("convertToJson", &convertToJson);
     function("convertToJsonMetadataOnly", &convertToJsonMetadataOnly);
     function("convertToJsonAuto", &convertToJsonAuto);
+
+    // New optimized DataManager API
+    function("dm_loadCSV", &dm_loadCSV);
+    function("dm_getMetadata", &dm_getMetadata);
+    function("dm_getSchema", &dm_getSchema);
+    function("dm_getStatistics", &dm_getStatistics);
+    function("dm_getRows", &dm_getRows);
+    function("dm_getRowCount", &dm_getRowCount);
+    function("dm_getColumnCount", &dm_getColumnCount);
+    function("dm_clear", &dm_clear);
+    function("dm_hasData", &dm_hasData);
 }
