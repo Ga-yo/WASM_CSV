@@ -711,8 +711,256 @@ std::string convertToJsonAuto(const std::string& csvContent, const std::string& 
     return convertToJson(csvContent, filename);
 }
 
+// =========================
+// Optimized Version
+// =========================
+
+// Fast in-place trim
+inline void trimInPlace(std::string& str) {
+    const char* whitespace = " \t\r\n";
+    size_t first = str.find_first_not_of(whitespace);
+    if (first == std::string::npos) {
+        str.clear();
+        return;
+    }
+    size_t last = str.find_last_not_of(whitespace);
+    if (first > 0 || last < str.length() - 1) {
+        str = str.substr(first, last - first + 1);
+    }
+}
+
+// Fast BOM removal (returns pointer offset)
+inline const char* skipBOM(const char* data, size_t& length) {
+    if (length >= 3 &&
+        (unsigned char)data[0] == 0xEF &&
+        (unsigned char)data[1] == 0xBB &&
+        (unsigned char)data[2] == 0xBF) {
+        length -= 3;
+        return data + 3;
+    }
+    return data;
+}
+
+// Optimized version with aggressive performance optimizations
+std::string convertToJsonOptimized(const std::string& csvContent, const std::string& filename) {
+    // Skip BOM
+    size_t dataLength = csvContent.length();
+    const char* data = skipBOM(csvContent.c_str(), dataLength);
+
+    // Detect delimiter
+    char delimiter = ',';
+    {
+        uint32_t commaCount = 0, tabCount = 0, semicolonCount = 0;
+        bool inQuotes = false;
+        uint32_t lineCount = 0;
+
+        for (size_t i = 0; i < dataLength && lineCount < 5; i++) {
+            char c = data[i];
+            if (c == '"') inQuotes = !inQuotes;
+            else if (!inQuotes) {
+                if (c == ',') commaCount++;
+                else if (c == '\t') tabCount++;
+                else if (c == ';') semicolonCount++;
+                else if (c == '\n') lineCount++;
+            }
+        }
+
+        if (tabCount > commaCount && tabCount > semicolonCount) delimiter = '\t';
+        else if (semicolonCount > commaCount && semicolonCount > tabCount) delimiter = ';';
+    }
+
+    // Parse CSV with pre-allocated memory
+    std::vector<std::string> headers;
+    headers.reserve(50);
+
+    std::vector<std::vector<std::string>> rows;
+    std::vector<std::string> currentRow;
+    currentRow.reserve(50);
+
+    std::string field;
+    field.reserve(256);
+
+    bool inQuotes = false;
+    bool isFirstRow = true;
+
+    for (size_t i = 0; i < dataLength; i++) {
+        char c = data[i];
+
+        if (c == '"') {
+            if (inQuotes && i + 1 < dataLength && data[i + 1] == '"') {
+                field += '"';
+                i++;
+            } else {
+                inQuotes = !inQuotes;
+            }
+        } else if (c == delimiter && !inQuotes) {
+            trimInPlace(field);
+            currentRow.push_back(std::move(field));
+            field.clear();
+            field.reserve(256);
+        } else if ((c == '\n' || c == '\r') && !inQuotes) {
+            if (c == '\r' && i + 1 < dataLength && data[i + 1] == '\n') i++;
+
+            trimInPlace(field);
+            currentRow.push_back(std::move(field));
+            field.clear();
+            field.reserve(256);
+
+            bool hasData = false;
+            for (const auto& f : currentRow) {
+                if (!f.empty()) {
+                    hasData = true;
+                    break;
+                }
+            }
+
+            if (hasData) {
+                if (isFirstRow) {
+                    headers = std::move(currentRow);
+                    isFirstRow = false;
+                    size_t estimatedRows = dataLength / (headers.size() * 20);
+                    rows.reserve(std::min(estimatedRows, size_t(100000)));
+                } else {
+                    rows.push_back(std::move(currentRow));
+                }
+            }
+            currentRow.clear();
+            currentRow.reserve(headers.size());
+        } else {
+            field += c;
+        }
+    }
+
+    // Last row
+    if (!field.empty() || !currentRow.empty()) {
+        trimInPlace(field);
+        currentRow.push_back(std::move(field));
+        bool hasData = false;
+        for (const auto& f : currentRow) {
+            if (!f.empty()) { hasData = true; break; }
+        }
+        if (hasData) {
+            if (isFirstRow) headers = std::move(currentRow);
+            else rows.push_back(std::move(currentRow));
+        }
+    }
+
+    if (headers.empty()) {
+        return "{\"error\":\"Empty CSV\",\"metadata\":{\"filename\":\"" + filename + "\"}}";
+    }
+
+    const int numColumns = headers.size();
+    const int numRows = rows.size();
+
+    // Normalize row lengths
+    for (auto& row : rows) {
+        row.resize(numColumns);
+    }
+
+    // Transpose for column-wise processing
+    std::vector<std::vector<std::string>> columnData(numColumns);
+    for (int i = 0; i < numColumns; i++) {
+        columnData[i].reserve(numRows);
+    }
+    for (const auto& row : rows) {
+        for (int i = 0; i < numColumns; i++) {
+            columnData[i].push_back(row[i]);
+        }
+    }
+
+    // Type detection and stats (simplified)
+    std::vector<DataType> columnTypes(numColumns);
+    std::vector<ColumnStats> stats(numColumns);
+
+    for (int i = 0; i < numColumns; i++) {
+        columnTypes[i] = detectColumnType(columnData[i]);
+        stats[i].type = columnTypes[i];
+
+        std::unordered_set<std::string> uniqueVals;
+        uniqueVals.reserve(std::min(numRows, 10000));
+
+        for (const auto& val : columnData[i]) {
+            if (TypeChecker::isNull(val)) {
+                stats[i].nullCount++;
+                continue;
+            }
+            if (uniqueVals.size() < 10000) uniqueVals.insert(val);
+
+            if (columnTypes[i] == DataType::INTEGER || columnTypes[i] == DataType::FLOAT) {
+                try {
+                    double num = std::stod(val);
+                    stats[i].addNumericValue(num);
+                } catch (...) {}
+            }
+        }
+        stats[i].uniqueCount = uniqueVals.size();
+    }
+
+    // Build JSON
+    std::ostringstream json;
+    json << std::fixed << std::setprecision(2);
+
+    json << "{\"metadata\":{\"filename\":\"" << escapeJson(filename) << "\"";
+    json << ",\"totalRows\":" << numRows;
+    json << ",\"totalColumns\":" << numColumns;
+    json << ",\"fileSizeBytes\":" << csvContent.length();
+    json << ",\"columns\":[";
+
+    for (int i = 0; i < numColumns; i++) {
+        if (i > 0) json << ",";
+        json << "{\"name\":\"" << escapeJson(headers[i]) << "\"";
+        json << ",\"type\":\"" << dataTypeToString(columnTypes[i]) << "\"";
+        json << ",\"stats\":{\"count\":" << (numRows - stats[i].nullCount);
+        json << ",\"unique\":" << stats[i].uniqueCount;
+        json << ",\"nullCount\":" << stats[i].nullCount;
+
+        if (columnTypes[i] == DataType::INTEGER || columnTypes[i] == DataType::FLOAT) {
+            json << ",\"min\":" << stats[i].min;
+            json << ",\"max\":" << stats[i].max;
+            json << ",\"avg\":" << (stats[i].count > 0 ? stats[i].sum / stats[i].count : 0);
+        }
+        json << "}}";
+    }
+
+    json << "]},\"data\":[";
+
+    for (int r = 0; r < numRows; r++) {
+        if (r > 0) json << ",";
+        json << "{";
+        for (int c = 0; c < numColumns; c++) {
+            if (c > 0) json << ",";
+            json << "\"" << escapeJson(headers[c]) << "\":";
+
+            const std::string& val = rows[r][c];
+            if (val.empty()) {
+                json << "null";
+            } else if (columnTypes[c] == DataType::INTEGER || columnTypes[c] == DataType::FLOAT) {
+                try {
+                    std::stod(val);
+                    json << val;
+                } catch (...) {
+                    json << "\"" << escapeJson(val) << "\"";
+                }
+            } else if (columnTypes[c] == DataType::BOOLEAN) {
+                std::string lower = val;
+                std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+                if (lower == "true" || lower == "yes" || lower == "1") json << "true";
+                else if (lower == "false" || lower == "no" || lower == "0") json << "false";
+                else json << "\"" << escapeJson(val) << "\"";
+            } else {
+                json << "\"" << escapeJson(val) << "\"";
+            }
+        }
+        json << "}";
+    }
+
+    json << "]}";
+    return json.str();
+}
+
 EMSCRIPTEN_BINDINGS(csv_converter) {
     function("convertToJson", &convertToJson);
     function("convertToJsonMetadataOnly", &convertToJsonMetadataOnly);
     function("convertToJsonAuto", &convertToJsonAuto);
+    function("convertToJsonOptimized", &convertToJsonOptimized);
 }
