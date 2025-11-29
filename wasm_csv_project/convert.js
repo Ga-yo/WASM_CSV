@@ -92,17 +92,59 @@ function getFile(key) {
   }));
 }
 
+// Function to update the uploaded file UI
+function updateFileInfoUI(file) {
+  const fileNameEl = document.getElementById('uploaded-file-name');
+  const fileSizeEl = document.getElementById('uploaded-file-size');
+
+  if (fileNameEl && fileSizeEl && file) {
+    fileNameEl.textContent = file.name;
+    fileSizeEl.textContent = `${(file.size / 1024).toFixed(2)} KB`;
+    uploadedFileName = file.name; // Store filename
+  }
+}
+
+// IndexedDB helper to delete a file
+function deleteFile(key) {
+  return openDb().then(({ db, storeName }) => new Promise((resolve, reject) => {
+    const tx = db.transaction(storeName, 'readwrite');
+    const store = tx.objectStore(storeName);
+    const req = store.delete(key);
+    req.onsuccess = () => {
+      sessionStorage.removeItem('uploadedFileName');
+      resolve();
+    };
+    req.onerror = (e) => reject(e.target.error);
+  }));
+}
+
+// Event listener for delete button
+const btnDeleteFile = document.getElementById('btn-delete-file');
+if (btnDeleteFile) {
+  btnDeleteFile.addEventListener('click', async () => {
+    if (confirm('파일을 삭제하시겠습니까? 분석 페이지에서 파일이 제거됩니다.')) {
+      try {
+        await deleteFile('uploaded-file');
+        alert('파일이 삭제되었습니다.');
+        window.location.href = 'upload.html'; // Redirect to upload page
+      } catch (err) {
+        console.error('파일 삭제 실패:', err);
+        alert('파일 삭제 중 오류가 발생했습니다.');
+      }
+    }
+  });
+}
+
 // Load and convert CSV file from IndexedDB
 async function loadAndConvertCsv() {
   try {
-    // Get filename from sessionStorage
-    uploadedFileName = sessionStorage.getItem('uploadedFileName') || 'data';
-
-    // Load file from IndexedDB
     const file = await getFile('uploaded-file');
     if (!file) {
       throw new Error('업로드된 파일을 찾을 수 없습니다.');
     }
+
+    // Update UI with file info
+    updateFileInfoUI(file);
 
     // Read file as ArrayBuffer and detect encoding
     const arrayBuffer = await file.arrayBuffer();
@@ -146,7 +188,7 @@ async function loadAndConvertCsv() {
             const decoder = new TextDecoder(encoding);
             text = decoder.decode(uint8Array);
             // Check if decoding produced valid Korean characters
-            if (text.includes('�') === false || text.length > 0) {
+            if (text.includes('') === false || text.length > 0) {
               decoded = true;
               break;
             }
@@ -211,6 +253,11 @@ async function loadAndConvertCsv() {
     console.error('CSV 변환 실패:', err);
     if (beautifiedEl) {
       beautifiedEl.textContent = 'CSV를 JSON으로 변환할 수 없습니다: ' + err.message;
+    }
+    // If file is not found, redirect to upload page
+    if (err.message.includes('찾을 수 없습니다')) {
+      alert('분석할 파일이 없습니다. 먼저 파일을 업로드해주세요.');
+      window.location.href = 'upload.html';
     }
   }
 }
