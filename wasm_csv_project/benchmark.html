@@ -315,6 +315,14 @@
       </section>
     </div>
 
+    <script>
+      // Initialize Module object before loading WASM
+      var Module = {
+        onRuntimeInitialized: function() {
+          console.log('WASM module initialized successfully');
+        }
+      };
+    </script>
     <script src="csv_converter.js"></script>
     <script src="benchmark.js"></script>
   </body>
