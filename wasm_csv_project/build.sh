@@ -20,11 +20,9 @@ if ! command -v emcc &> /dev/null; then
 fi
 
 # Parse arguments
-BUILD_TYPE="standard"
+BUILD_TYPE="release"
 if [ "$1" == "debug" ] || [ "$1" == "-d" ]; then
     BUILD_TYPE="debug"
-elif [ "$1" == "optimized" ] || [ "$1" == "-o" ]; then
-    BUILD_TYPE="optimized"
 fi
 
 # Clean previous build files
@@ -50,32 +48,11 @@ COMMON_FLAGS=(
     -std=c++17
 )
 
-# Build standard version (optimized)
-build_standard() {
+# Build release version with maximum performance optimizations
+build_release() {
     echo ""
-    echo "Building unified version..."
-    emcc csv_converter.cpp \
-        -o csv_converter.js \
-        "${COMMON_FLAGS[@]}" \
-        -O3 \
-        -flto
-
-    if [ $? -eq 0 ]; then
-        echo "✓ Build successful"
-        return 0
-    else
-        echo "✗ Build failed"
-        return 1
-    fi
-}
-
-# Build highly optimized version for maximum performance
-build_optimized() {
-    echo ""
-    echo "Building MAXIMUM PERFORMANCE version..."
-    echo "Using aggressive optimization flags..."
-    echo ""
-    echo "Note: Same source file (csv_converter.cpp) but with aggressive compiler optimizations"
+    echo "Building RELEASE version with MAXIMUM PERFORMANCE optimizations..."
+    echo "Applying aggressive optimization flags..."
     echo ""
 
     emcc csv_converter.cpp \
@@ -99,7 +76,7 @@ build_optimized() {
         --llvm-lto 3
 
     if [ $? -eq 0 ]; then
-        echo "✓ Optimized build successful"
+        echo "✓ Release build successful"
         echo ""
         echo "Performance optimizations applied:"
         echo "  • Link-Time Optimization (LTO level 3)"
@@ -116,7 +93,7 @@ build_optimized() {
         echo "  • convertToJsonOptimized() - Optimized algorithm"
         return 0
     else
-        echo "✗ Optimized build failed"
+        echo "✗ Release build failed with closure compiler"
         echo "Trying without closure compiler..."
         emcc csv_converter.cpp \
             -o csv_converter.js \
@@ -133,7 +110,7 @@ build_optimized() {
             --llvm-lto 3
 
         if [ $? -eq 0 ]; then
-            echo "✓ Optimized build successful (without closure)"
+            echo "✓ Release build successful (without closure)"
             return 0
         else
             echo "✗ Build failed"
@@ -163,11 +140,8 @@ build_debug() {
 
 # Execute builds
 case $BUILD_TYPE in
-    "standard")
-        build_standard
-        ;;
-    "optimized")
-        build_optimized
+    "release")
+        build_release
         ;;
     "debug")
         build_debug
@@ -183,9 +157,8 @@ echo "Generated files:"
 ls -lh *.js *.wasm 2>/dev/null | awk '{print "  " $9 " (" $5 ")"}'
 echo ""
 echo "Usage:"
-echo "  ./build.sh           # Build standard version (-O3)"
-echo "  ./build.sh optimized # Build MAXIMUM PERFORMANCE version"
-echo "  ./build.sh debug     # Build debug version"
+echo "  ./build.sh        # Build release version (maximum performance optimizations)"
+echo "  ./build.sh debug  # Build debug version (for development)"
 echo ""
 echo "To test, start a local server:"
 echo "  python3 -m http.server 8080"
