@@ -100,9 +100,51 @@
                 <div class="text-sm text-neutral-600">
                   총 <span id="total-rows">0</span>개 행
                 </div>
+                <button id="btn-reset-table" class="btn-secondary">
+                  <i class="fa-solid fa-rotate-left mr-1" aria-hidden="true"></i>
+                  초기화
+                </button>
                 <button id="btn-download-excel" class="btn-primary">
                   <i class="fa-solid fa-download mr-1" aria-hidden="true"></i>
                   Excel 다운로드
+                </button>
+              </div>
+            </div>
+
+            <!-- Filter Section -->
+            <div class="flex items-center gap-4 mb-4">
+              <span class="text-sm font-medium text-neutral-700">요약 기능:</span>
+              <div class="flex gap-2">
+                <button id="btn-filter-max" class="btn-filter">
+                  <i class="fa-solid fa-arrow-up mr-1"></i>
+                  최대값
+                </button>
+                <button id="btn-filter-min" class="btn-filter">
+                  <i class="fa-solid fa-arrow-down mr-1"></i>
+                  최소값
+                </button>
+                <button id="btn-filter-avg" class="btn-filter">
+                  <i class="fa-solid fa-calculator mr-1"></i>
+                  평균
+                </button>
+                <button id="btn-filter-stats" class="btn-filter">
+                  <i class="fa-solid fa-chart-bar mr-1"></i>
+                  통계
+                </button>
+              </div>
+              <span id="filter-instruction" class="text-xs text-neutral-500 italic hidden">
+                필터를 선택한 후 열 헤더를 클릭하세요
+              </span>
+            </div>
+
+            <!-- Stats Result Display -->
+            <div id="stats-result" class="hidden p-3 bg-blue-50 border border-blue-200 rounded-lg mb-4">
+              <div class="flex items-center justify-between">
+                <div class="text-sm">
+                  <span class="font-semibold text-blue-900" id="stats-result-text"></span>
+                </div>
+                <button id="btn-close-stats" class="text-blue-600 hover:text-blue-800">
+                  <i class="fa-solid fa-times"></i>
                 </button>
               </div>
             </div>

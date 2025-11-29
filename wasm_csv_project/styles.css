@@ -475,6 +475,32 @@ body {
   background-color: var(--color-neutral-100);
 }
 
+.btn-filter {
+  height: calc(var(--spacing) * 9);
+  padding-inline: calc(var(--spacing) * 3);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-neutral-300);
+  background-color: var(--color-white);
+  color: var(--color-neutral-700);
+  font-size: var(--text-sm);
+  display: flex;
+  align-items: center;
+  gap: calc(var(--spacing) * 1);
+  transition: all var(--default-transition-duration)
+    var(--default-transition-timing-function);
+}
+
+.btn-filter:hover {
+  background-color: var(--color-neutral-100);
+  border-color: var(--color-neutral-400);
+}
+
+.btn-filter.active {
+  background-color: #3b82f6;
+  border-color: #3b82f6;
+  color: var(--color-white);
+}
+
 .card {
   border: 1px solid var(--color-neutral-200);
   border-radius: var(--radius-lg);

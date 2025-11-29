@@ -23,6 +23,10 @@ if (btnJsonMain)
 // Global variable to store converted JSON data
 let convertedJsonData = null;
 let uploadedFileName = '';
+let currentSortColumn = null;
+let currentSortDirection = null; // 'asc' or 'desc'
+let originalDataOrder = null; // Store original order for reset
+let activeFilter = null; // 'max', 'min', 'avg', or 'stats'
 
 // Chart related variables
 let myChart = null;
@@ -271,6 +275,14 @@ function initializeStatsSection() {
     return;
   }
 
+  // Store original data order
+  originalDataOrder = [...convertedJsonData.data];
+
+  // Reset sort state
+  currentSortColumn = null;
+  currentSortDirection = null;
+  activeFilter = null;
+
   // Render data table
   renderDataTable();
 
@@ -278,6 +290,37 @@ function initializeStatsSection() {
   const btnDownloadExcel = document.getElementById('btn-download-excel');
   if (btnDownloadExcel) {
     btnDownloadExcel.addEventListener('click', downloadAsExcel);
+  }
+
+  // Add event listener for reset button
+  const btnResetTable = document.getElementById('btn-reset-table');
+  if (btnResetTable) {
+    btnResetTable.addEventListener('click', resetTableSort);
+  }
+
+  // Add event listeners for filter buttons
+  const btnFilterMax = document.getElementById('btn-filter-max');
+  const btnFilterMin = document.getElementById('btn-filter-min');
+  const btnFilterAvg = document.getElementById('btn-filter-avg');
+  const btnFilterStats = document.getElementById('btn-filter-stats');
+
+  if (btnFilterMax) {
+    btnFilterMax.addEventListener('click', () => toggleFilter('max'));
+  }
+  if (btnFilterMin) {
+    btnFilterMin.addEventListener('click', () => toggleFilter('min'));
+  }
+  if (btnFilterAvg) {
+    btnFilterAvg.addEventListener('click', () => toggleFilter('avg'));
+  }
+  if (btnFilterStats) {
+    btnFilterStats.addEventListener('click', () => toggleFilter('stats'));
+  }
+
+  // Add event listener for close stats result
+  const btnCloseStats = document.getElementById('btn-close-stats');
+  if (btnCloseStats) {
+    btnCloseStats.addEventListener('click', hideStatsResult);
   }
 }
 
@@ -308,8 +351,43 @@ function renderDataTable() {
 
   columns.forEach(colName => {
     const th = document.createElement('th');
-    th.className = 'p-2 text-left font-semibold text-neutral-900 bg-neutral-50 border border-neutral-200';
-    th.textContent = colName;
+    th.className = 'p-2 text-left font-semibold text-neutral-900 bg-neutral-50 border border-neutral-200 cursor-pointer hover:bg-neutral-100';
+    th.style.userSelect = 'none';
+
+    // Create header content with sort icon
+    const headerContent = document.createElement('div');
+    headerContent.className = 'flex items-center gap-2';
+
+    const headerText = document.createElement('span');
+    headerText.textContent = colName;
+
+    const sortIcon = document.createElement('i');
+    sortIcon.className = 'fa-solid text-neutral-400';
+
+    // Set sort icon based on current sort state
+    if (currentSortColumn === colName) {
+      if (currentSortDirection === 'asc') {
+        sortIcon.className = 'fa-solid fa-sort-up text-blue-600';
+      } else if (currentSortDirection === 'desc') {
+        sortIcon.className = 'fa-solid fa-sort-down text-blue-600';
+      }
+    } else {
+      sortIcon.className = 'fa-solid fa-sort text-neutral-400';
+    }
+
+    headerContent.appendChild(headerText);
+    headerContent.appendChild(sortIcon);
+    th.appendChild(headerContent);
+
+    // Add click event for sorting or filter application
+    th.addEventListener('click', () => {
+      if (activeFilter) {
+        applyFilterToColumn(colName);
+      } else {
+        sortTableByColumn(colName);
+      }
+    });
+
     headerRow.appendChild(th);
   });
 
@@ -347,6 +425,213 @@ function renderDataTable() {
     messageRow.appendChild(messageCell);
     tableBody.appendChild(messageRow);
   }
+}
+
+function sortTableByColumn(columnName) {
+  if (!convertedJsonData || !convertedJsonData.data || convertedJsonData.data.length === 0) {
+    return;
+  }
+
+  // Determine sort direction
+  if (currentSortColumn === columnName) {
+    // Toggle between asc -> desc -> no sort (reset)
+    if (currentSortDirection === 'asc') {
+      currentSortDirection = 'desc';
+    } else if (currentSortDirection === 'desc') {
+      // Reset to original order
+      currentSortColumn = null;
+      currentSortDirection = null;
+      convertedJsonData.data = [...originalDataOrder];
+      renderDataTable();
+      return;
+    }
+  } else {
+    // New column, start with ascending
+    currentSortColumn = columnName;
+    currentSortDirection = 'asc';
+  }
+
+  // Sort the data
+  convertedJsonData.data.sort((a, b) => {
+    let valA = a[columnName];
+    let valB = b[columnName];
+
+    // Handle null/undefined/empty values
+    if (valA === null || valA === undefined || valA === '') valA = '';
+    if (valB === null || valB === undefined || valB === '') valB = '';
+
+    // Try to parse as number for numeric comparison
+    const numA = parseFloat(valA);
+    const numB = parseFloat(valB);
+
+    let comparison = 0;
+
+    if (!isNaN(numA) && !isNaN(numB)) {
+      // Numeric comparison
+      comparison = numA - numB;
+    } else {
+      // String comparison
+      comparison = String(valA).localeCompare(String(valB));
+    }
+
+    return currentSortDirection === 'asc' ? comparison : -comparison;
+  });
+
+  // Re-render table
+  renderDataTable();
+}
+
+function resetTableSort() {
+  if (!originalDataOrder) return;
+
+  // Restore original order
+  convertedJsonData.data = [...originalDataOrder];
+  currentSortColumn = null;
+  currentSortDirection = null;
+
+  // Deactivate filter
+  activeFilter = null;
+  updateFilterButtons();
+  hideStatsResult();
+  hideFilterInstruction();
+
+  // Re-render table
+  renderDataTable();
+}
+
+function toggleFilter(filterType) {
+  if (activeFilter === filterType) {
+    // Deactivate filter
+    activeFilter = null;
+    hideFilterInstruction();
+  } else {
+    // Activate filter
+    activeFilter = filterType;
+    showFilterInstruction();
+  }
+
+  updateFilterButtons();
+  hideStatsResult();
+}
+
+function updateFilterButtons() {
+  const btnFilterMax = document.getElementById('btn-filter-max');
+  const btnFilterMin = document.getElementById('btn-filter-min');
+  const btnFilterAvg = document.getElementById('btn-filter-avg');
+  const btnFilterStats = document.getElementById('btn-filter-stats');
+
+  if (btnFilterMax) {
+    btnFilterMax.classList.toggle('active', activeFilter === 'max');
+  }
+  if (btnFilterMin) {
+    btnFilterMin.classList.toggle('active', activeFilter === 'min');
+  }
+  if (btnFilterAvg) {
+    btnFilterAvg.classList.toggle('active', activeFilter === 'avg');
+  }
+  if (btnFilterStats) {
+    btnFilterStats.classList.toggle('active', activeFilter === 'stats');
+  }
+}
+
+function showFilterInstruction() {
+  const instruction = document.getElementById('filter-instruction');
+  if (instruction) {
+    instruction.classList.remove('hidden');
+  }
+}
+
+function hideFilterInstruction() {
+  const instruction = document.getElementById('filter-instruction');
+  if (instruction) {
+    instruction.classList.add('hidden');
+  }
+}
+
+function hideStatsResult() {
+  const statsResult = document.getElementById('stats-result');
+  if (statsResult) {
+    statsResult.classList.add('hidden');
+  }
+}
+
+function showStatsResult(text) {
+  const statsResult = document.getElementById('stats-result');
+  const statsResultText = document.getElementById('stats-result-text');
+
+  if (statsResult && statsResultText) {
+    statsResultText.textContent = text;
+    statsResult.classList.remove('hidden');
+  }
+}
+
+function isNumericColumn(columnName) {
+  const data = convertedJsonData.data;
+  if (!data || data.length === 0) return false;
+
+  // Check first 100 rows to determine if column is numeric
+  const sampleSize = Math.min(100, data.length);
+  let numericCount = 0;
+
+  for (let i = 0; i < sampleSize; i++) {
+    const value = data[i][columnName];
+    if (value !== null && value !== undefined && value !== '') {
+      const num = parseFloat(value);
+      if (!isNaN(num) && isFinite(num)) {
+        numericCount++;
+      }
+    }
+  }
+
+  // Consider numeric if at least 80% of non-empty values are numeric
+  return numericCount > 0 && numericCount / sampleSize >= 0.8;
+}
+
+function applyFilterToColumn(columnName) {
+  if (!activeFilter || !convertedJsonData || !convertedJsonData.data) {
+    return;
+  }
+
+  // Check if column is numeric
+  if (!isNumericColumn(columnName)) {
+    alert('숫자 타입 데이터만 가능합니다');
+    return;
+  }
+
+  const data = convertedJsonData.data;
+  const values = data.map(row => {
+    const val = row[columnName];
+    return val !== null && val !== undefined && val !== '' ? parseFloat(val) : null;
+  }).filter(v => v !== null && !isNaN(v) && isFinite(v));
+
+  if (values.length === 0) {
+    alert('유효한 숫자 데이터가 없습니다');
+    return;
+  }
+
+  let resultText = '';
+
+  if (activeFilter === 'max') {
+    const maxValue = Math.max(...values);
+    resultText = `"${columnName}" 열의 최대값: ${maxValue.toLocaleString()}`;
+  } else if (activeFilter === 'min') {
+    const minValue = Math.min(...values);
+    resultText = `"${columnName}" 열의 최소값: ${minValue.toLocaleString()}`;
+  } else if (activeFilter === 'avg') {
+    const sum = values.reduce((a, b) => a + b, 0);
+    const avg = sum / values.length;
+    resultText = `"${columnName}" 열의 평균: ${avg.toFixed(2)}`;
+  } else if (activeFilter === 'stats') {
+    const maxValue = Math.max(...values);
+    const minValue = Math.min(...values);
+    const sum = values.reduce((a, b) => a + b, 0);
+    const avg = sum / values.length;
+    const count = values.length;
+
+    resultText = `"${columnName}" 열의 통계 - 개수: ${count.toLocaleString()}, 최소값: ${minValue.toLocaleString()}, 최대값: ${maxValue.toLocaleString()}, 평균: ${avg.toFixed(2)}`;
+  }
+
+  showStatsResult(resultText);
 }
 
 function downloadAsExcel() {
