@@ -47,20 +47,24 @@ function unhighlight() {
 }
 
 async function handleFileUpload(file) {
-  console.log("업로드 파일:", file.name);
-
-  // 1. 파일 메타정보를 sessionStorage에 먼저 저장합니다.
-  sessionStorage.setItem('uploadedFileName', file.name);
-  sessionStorage.setItem('uploadedFileSize', String(file.size));
+  console.log("업로드 파일:", file.name, "크기:", file.size, "bytes");
 
   try {
-    // 2. 파일 객체를 IndexedDB에 저장합니다.
+    // DBManager.putFile now handles both IndexedDB and sessionStorage
     await dbManager.putFile('uploaded-file', file);
+    
+    // On success, redirect to the conversion page
+    window.location.href = "convert.html";
+
   } catch (err) {
-    console.error('IndexedDB 저장 실패:', err);
-    alert('파일을 브라우저 데이터베이스에 저장하는 데 실패했습니다. 페이지를 벗어나면 파일이 사라질 수 있습니다.');
+    console.error('파일 저장 실패:', err);
+
+    // Check for QuotaExceededError, which DBManager will now throw on transaction error
+    if (err.name === 'QuotaExceededError' || (err.message && err.message.toLowerCase().includes('quota'))) {
+      alert(`파일 저장 실패: 파일이 너무 큽니다(현재 크기: ${(file.size / 1024 / 1024).toFixed(1)}MB). 브라우저의 로컬 저장 용량을 초과했습니다. 더 작은 파일을 사용해주세요.`);
+    } else {
+      alert(`알 수 없는 오류로 파일 저장에 실패했습니다: ${err.name}\n\n이 문제가 계속되면 다른 브라우저를 사용해보세요.`);
+    }
+    // Do NOT redirect on failure
   }
-  
-  // 3. 변환 페이지로 이동합니다.
-  window.location.href = "convert.html";
 }

@@ -33,12 +33,23 @@ class DBManager {
     return new Promise((resolve, reject) => {
       const tx = this.db.transaction(this.storeName, 'readwrite');
       const store = tx.objectStore(this.storeName);
-      const req = store.put(file, key);
-      req.onsuccess = () => resolve();
-      req.onerror = (e) => {
-        console.error(`Error putting file with key ${key}: ${e.target.error}`);
+      store.put(file, key);
+
+      tx.oncomplete = () => {
+        try {
+          sessionStorage.setItem('uploadedFileName', file.name);
+          sessionStorage.setItem('uploadedFileSize', String(file.size));
+          console.log('DBManager: Session storage updated with file info.');
+        } catch (e) {
+          console.warn('DBManager: Failed to set session storage', e);
+        }
+        resolve();
+      };
+
+      tx.onerror = (e) => {
+        console.error(`Error in transaction for putFile with key ${key}: ${e.target.error}`);
         reject(e.target.error);
-      }
+      };
     });
   }
 
@@ -62,11 +73,22 @@ class DBManager {
       const tx = this.db.transaction(this.storeName, 'readwrite');
       const store = tx.objectStore(this.storeName);
       const req = store.delete(key);
-      req.onsuccess = () => resolve();
+      
+      req.onsuccess = () => {
+        try {
+          sessionStorage.removeItem('uploadedFileName');
+          sessionStorage.removeItem('uploadedFileSize');
+          console.log('DBManager: Session storage cleared.');
+        } catch (e) {
+          console.warn('DBManager: Failed to clear session storage', e);
+        }
+        resolve();
+      };
+
       req.onerror = (e) => {
         console.error(`Error deleting file with key ${key}: ${e.target.error}`);
         reject(e.target.error);
-      }
+      };
     });
   }
 

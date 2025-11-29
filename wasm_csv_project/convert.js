@@ -72,6 +72,35 @@ function renderJson(obj) {
   }
 }
 
+// Function to update the uploaded file UI
+function updateFileInfoUI(file) {
+  const fileNameEl = document.getElementById('uploaded-file-name');
+  const fileSizeEl = document.getElementById('uploaded-file-size');
+
+  if (fileNameEl && fileSizeEl && file) {
+    fileNameEl.textContent = file.name;
+    fileSizeEl.textContent = `${(file.size / 1024).toFixed(2)} KB`;
+    uploadedFileName = file.name; // Store filename
+  }
+}
+
+// Event listener for delete button
+const btnDeleteFile = document.getElementById('btn-delete-file');
+if (btnDeleteFile) {
+  btnDeleteFile.addEventListener('click', async () => {
+    if (confirm('파일을 삭제하시겠습니까? 분석 페이지에서 파일이 제거됩니다.')) {
+      try {
+        await dbManager.deleteFile('uploaded-file');
+        alert('파일이 삭제되었습니다.');
+        window.location.href = 'upload.html'; // Redirect to upload page
+      } catch (err) {
+        console.error('파일 삭제 실패:', err);
+        alert('파일 삭제 중 오류가 발생했습니다.');
+      }
+    }
+  });
+}
+
 // Load and convert CSV file from IndexedDB
 async function loadAndConvertCsv() {
   try {
@@ -80,9 +109,13 @@ async function loadAndConvertCsv() {
 
     // Load file from IndexedDB using DBManager
     const file = await dbManager.getFile('uploaded-file');
+
     if (!file) {
       throw new Error('업로드된 파일을 찾을 수 없습니다.');
     }
+
+    // Update UI with file info
+    updateFileInfoUI(file);
 
     // Read file as ArrayBuffer and detect encoding
     const arrayBuffer = await file.arrayBuffer();
@@ -187,11 +220,146 @@ async function loadAndConvertCsv() {
     // Initialize chart section
     initializeChartSection();
 
+    // Initialize stats section
+    initializeStatsSection();
+
   } catch (err) {
     console.error('CSV 변환 실패:', err);
     if (beautifiedEl) {
       beautifiedEl.textContent = 'CSV를 JSON으로 변환할 수 없습니다: ' + err.message;
     }
+    // If file is not found, redirect to upload page
+    if (err.message.includes('찾을 수 없습니다')) {
+      alert('분석할 파일이 없습니다. 먼저 파일을 업로드해주세요.');
+      window.location.href = 'upload.html';
+    }
+  }
+}
+
+function initializeStatsSection() {
+  // Check if data exists
+  if (!convertedJsonData || !convertedJsonData.data || convertedJsonData.data.length === 0) {
+    return;
+  }
+
+  // Render data table
+  renderDataTable();
+
+  // Add event listener for Excel download button
+  const btnDownloadExcel = document.getElementById('btn-download-excel');
+  if (btnDownloadExcel) {
+    btnDownloadExcel.addEventListener('click', downloadAsExcel);
+  }
+}
+
+function renderDataTable() {
+  const tableHead = document.getElementById('stats-table-head');
+  const tableBody = document.getElementById('stats-table-body');
+  const totalRowsEl = document.getElementById('total-rows');
+
+  if (!tableHead || !tableBody) return;
+
+  tableHead.innerHTML = '';
+  tableBody.innerHTML = '';
+
+  const data = convertedJsonData.data;
+  if (!data || data.length === 0) return;
+
+  // Update total rows count
+  if (totalRowsEl) {
+    totalRowsEl.textContent = data.length.toLocaleString();
+  }
+
+  // Get column names from first data row
+  const columns = Object.keys(data[0]);
+
+  // Create table header (가로줄 = 컬럼명)
+  const headerRow = document.createElement('tr');
+  headerRow.className = 'border-b-2 border-neutral-300';
+
+  columns.forEach(colName => {
+    const th = document.createElement('th');
+    th.className = 'p-2 text-left font-semibold text-neutral-900 bg-neutral-50 border border-neutral-200';
+    th.textContent = colName;
+    headerRow.appendChild(th);
+  });
+
+  tableHead.appendChild(headerRow);
+
+  // Create table body (세로줄 = 데이터 행)
+  // Limit to first 100 rows for performance
+  const displayLimit = Math.min(100, data.length);
+
+  for (let i = 0; i < displayLimit; i++) {
+    const row = document.createElement('tr');
+    row.className = 'border-b border-neutral-100 hover:bg-neutral-50';
+
+    columns.forEach(colName => {
+      const td = document.createElement('td');
+      td.className = 'p-2 text-neutral-700 border border-neutral-200';
+
+      const value = data[i][colName];
+      // Handle null, undefined, or empty values
+      td.textContent = (value === null || value === undefined || value === '') ? '-' : value;
+
+      row.appendChild(td);
+    });
+
+    tableBody.appendChild(row);
+  }
+
+  // Show message if data is truncated
+  if (data.length > displayLimit) {
+    const messageRow = document.createElement('tr');
+    const messageCell = document.createElement('td');
+    messageCell.colSpan = columns.length;
+    messageCell.className = 'p-4 text-center text-neutral-500 italic border border-neutral-200';
+    messageCell.textContent = `처음 ${displayLimit}개 행만 표시됩니다. (전체: ${data.length.toLocaleString()}개 행)`;
+    messageRow.appendChild(messageCell);
+    tableBody.appendChild(messageRow);
+  }
+}
+
+function downloadAsExcel() {
+  if (!convertedJsonData || !convertedJsonData.data || convertedJsonData.data.length === 0) {
+    alert('다운로드할 데이터가 없습니다.');
+    return;
+  }
+
+  try {
+    // Check if XLSX library is loaded
+    if (typeof XLSX === 'undefined') {
+      alert('Excel 라이브러리를 로드하는 중입니다. 잠시 후 다시 시도해주세요.');
+      return;
+    }
+
+    // Create a new workbook
+    const wb = XLSX.utils.book_new();
+
+    // Convert JSON data to worksheet
+    // XLSX.utils.json_to_sheet will automatically use object keys as headers
+    const ws = XLSX.utils.json_to_sheet(convertedJsonData.data);
+
+    // Set column widths for better readability
+    const columns = Object.keys(convertedJsonData.data[0]);
+    const wscols = columns.map(() => ({ wch: 15 })); // 15 characters wide
+    ws['!cols'] = wscols;
+
+    // Add worksheet to workbook
+    XLSX.utils.book_append_sheet(wb, ws, 'Data');
+
+    // Generate filename from original file name
+    const originalFilename = uploadedFileName.replace(/\.(csv|CSV)$/, '') || 'data';
+    const excelFilename = `${originalFilename}.xlsx`;
+
+    // Write and download the file
+    XLSX.writeFile(wb, excelFilename);
+
+    console.log('Excel 파일 다운로드 완료:', excelFilename);
+
+  } catch (err) {
+    console.error('Excel 다운로드 실패:', err);
+    alert('Excel 파일 다운로드 중 오류가 발생했습니다: ' + err.message);
   }
 }
 
