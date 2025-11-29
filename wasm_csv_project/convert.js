@@ -1,3 +1,5 @@
+import DBManager from './DBManager.js';
+
 const sectionIds = ["stats-section", "visualize-section", "json-section"];
 
 function showSection(id) {
@@ -30,6 +32,9 @@ const chartTypeSelect = document.getElementById('chart-type');
 const chartLabelColSelect = document.getElementById('chart-label-col');
 const chartDataColSelect = document.getElementById('chart-data-col');
 const chartCanvas = document.getElementById('myChart');
+
+// Create an instance of the DBManager
+const dbManager = new DBManager();
 
 
 const btnDownloadJson = document.getElementById("btn-download-json");
@@ -67,31 +72,6 @@ function renderJson(obj) {
   }
 }
 
-// IndexedDB helper
-function openDb(dbName = 'wasm_csv_db', storeName = 'files') {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open(dbName, 1);
-    req.onupgradeneeded = (e) => {
-      const db = e.target.result;
-      if (!db.objectStoreNames.contains(storeName)) {
-        db.createObjectStore(storeName);
-      }
-    };
-    req.onsuccess = (e) => resolve({ db: e.target.result, storeName });
-    req.onerror = (e) => reject(e.target.error);
-  });
-}
-
-function getFile(key) {
-  return openDb().then(({ db, storeName }) => new Promise((resolve, reject) => {
-    const tx = db.transaction(storeName, 'readonly');
-    const store = tx.objectStore(storeName);
-    const req = store.get(key);
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = (e) => reject(e.target.error);
-  }));
-}
-
 // Function to update the uploaded file UI
 function updateFileInfoUI(file) {
   const fileNameEl = document.getElementById('uploaded-file-name');
@@ -104,27 +84,13 @@ function updateFileInfoUI(file) {
   }
 }
 
-// IndexedDB helper to delete a file
-function deleteFile(key) {
-  return openDb().then(({ db, storeName }) => new Promise((resolve, reject) => {
-    const tx = db.transaction(storeName, 'readwrite');
-    const store = tx.objectStore(storeName);
-    const req = store.delete(key);
-    req.onsuccess = () => {
-      sessionStorage.removeItem('uploadedFileName');
-      resolve();
-    };
-    req.onerror = (e) => reject(e.target.error);
-  }));
-}
-
 // Event listener for delete button
 const btnDeleteFile = document.getElementById('btn-delete-file');
 if (btnDeleteFile) {
   btnDeleteFile.addEventListener('click', async () => {
     if (confirm('파일을 삭제하시겠습니까? 분석 페이지에서 파일이 제거됩니다.')) {
       try {
-        await deleteFile('uploaded-file');
+        await dbManager.deleteFile('uploaded-file');
         alert('파일이 삭제되었습니다.');
         window.location.href = 'upload.html'; // Redirect to upload page
       } catch (err) {
@@ -138,7 +104,12 @@ if (btnDeleteFile) {
 // Load and convert CSV file from IndexedDB
 async function loadAndConvertCsv() {
   try {
-    const file = await getFile('uploaded-file');
+    // Get filename from sessionStorage
+    uploadedFileName = sessionStorage.getItem('uploadedFileName') || 'data';
+
+    // Load file from IndexedDB using DBManager
+    const file = await dbManager.getFile('uploaded-file');
+
     if (!file) {
       throw new Error('업로드된 파일을 찾을 수 없습니다.');
     }

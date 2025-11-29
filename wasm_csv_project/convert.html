@@ -19,6 +19,12 @@
       <section id="uploaded-file-section" class="card">
         <div class="flex items-center justify-between">
           <div class="flex items-center gap-3">
+            <div class="h-10 w-10 rounded-md bg-neutral-900">
+              <i
+                class="fa-solid fa-file-csv text-white icon"
+                aria-hidden="true"
+              ></i>
+            </div>
             <div>
               <div
                 class="text-sm font-semibold text-neutral-900"
@@ -94,22 +100,84 @@
           <div class="p-4 border-b border-neutral-200">
             <div class="flex items-center justify-between mb-4">
               <div class="text-lg font-semibold text-neutral-900">
-                데이터 테이블
-              </div>
-              <div class="flex items-center gap-3">
-                <div class="text-sm text-neutral-600">
-                  총 <span id="total-rows">0</span>개 행
-                </div>
-                <button id="btn-download-excel" class="btn-primary">
-                  <i class="fa-solid fa-download mr-1" aria-hidden="true"></i>
-                  Excel 다운로드
-                </button>
+                요약 통계
               </div>
             </div>
+            <div class="flex items-center gap-4 text-sm">
+              <span class="text-neutral-600">타입 필터:</span>
+              <label class="flex items-center gap-1 cursor-pointer">
+                <input
+                  type="checkbox"
+                  class="type-filter"
+                  value="all"
+                  checked
+                />
+                <span>전체</span>
+              </label>
+              <label class="flex items-center gap-1 cursor-pointer">
+                <input type="checkbox" class="type-filter" value="숫자" />
+                <span>숫자</span>
+              </label>
+              <label class="flex items-center gap-1 cursor-pointer">
+                <input type="checkbox" class="type-filter" value="문자" />
+                <span>문자</span>
+              </label>
+            </div>
           </div>
-          <div class="overflow-auto p-4" style="max-height: 600px;">
-            <table id="stats-table" class="w-full text-sm border-collapse">
-              <thead id="stats-table-head" class="sticky top-0 bg-white">
+          <div class="overflow-auto p-4">
+            <table id="stats-table" class="w-full text-sm table-sortable">
+              <thead>
+                <tr class="border-b border-neutral-200">
+                  <th data-sort="column" class="text-left p-2">
+                    컬럼
+                    <i
+                      class="fa-solid fa-sort text-neutral-400 ml-1"
+                      aria-hidden="true"
+                    ></i>
+                  </th>
+                  <th data-sort="type" class="text-left p-2">
+                    타입
+                    <i
+                      class="fa-solid fa-sort text-neutral-400 ml-1"
+                      aria-hidden="true"
+                    ></i>
+                  </th>
+                  <th data-sort="count" class="text-right p-2">
+                    개수
+                    <i
+                      class="fa-solid fa-sort text-neutral-400 ml-1"
+                      aria-hidden="true"
+                    ></i>
+                  </th>
+                  <th data-sort="unique" class="text-right p-2">
+                    고유값
+                    <i
+                      class="fa-solid fa-sort text-neutral-400 ml-1"
+                      aria-hidden="true"
+                    ></i>
+                  </th>
+                  <th data-sort="min" class="text-right p-2">
+                    최솟값
+                    <i
+                      class="fa-solid fa-sort text-neutral-400 ml-1"
+                      aria-hidden="true"
+                    ></i>
+                  </th>
+                  <th data-sort="max" class="text-right p-2">
+                    최댓값
+                    <i
+                      class="fa-solid fa-sort text-neutral-400 ml-1"
+                      aria-hidden="true"
+                    ></i>
+                  </th>
+                  <th data-sort="avg" class="text-right p-2">
+                    평균
+                    <i
+                      class="fa-solid fa-sort text-neutral-400 ml-1"
+                      aria-hidden="true"
+                    ></i>
+                  </th>
+                </tr>
               </thead>
               <tbody id="stats-table-body"></tbody>
             </table>
@@ -204,7 +272,7 @@
         };
       </script>
       <script src="csv_converter.js"></script>
-      <script src="convert.js"></script>
+      <script type="module" src="convert.js"></script>
     </div>
   </body>
 </html>
