@@ -164,11 +164,36 @@ async function loadAndConvertCsv() {
     }
 
     // Wait for WASM module to be ready
-    if (!Module || !Module.convertToJsonAuto) {
-      await new Promise((resolve) => {
-        Module = Module || {};
-        Module.onRuntimeInitialized = resolve;
+    if (typeof Module === 'undefined' || !Module.convertToJsonAuto) {
+      console.log('Waiting for WASM module to initialize...');
+
+      await new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          reject(new Error('WASM 모듈 로딩 시간 초과 (10초)'));
+        }, 10000);
+
+        // Save original callback if it exists
+        const originalCallback = Module && Module.onRuntimeInitialized;
+
+        const initCallback = () => {
+          clearTimeout(timeout);
+          console.log('WASM module ready');
+          if (originalCallback && typeof originalCallback === 'function') {
+            originalCallback();
+          }
+          resolve();
+        };
+
+        if (typeof Module === 'undefined') {
+          window.Module = {
+            onRuntimeInitialized: initCallback
+          };
+        } else {
+          Module.onRuntimeInitialized = initCallback;
+        }
       });
+    } else {
+      console.log('WASM module already loaded');
     }
 
     // Convert CSV to JSON using WASM

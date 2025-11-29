@@ -62,18 +62,13 @@ build_release() {
         -flto \
         -ffast-math \
         -msimd128 \
-        -msse \
-        -msse2 \
-        -fno-rtti \
         -fomit-frame-pointer \
         -finline-functions \
         -funroll-loops \
-        -fvectorize \
         -s AGGRESSIVE_VARIABLE_ELIMINATION=1 \
         -s ELIMINATE_DUPLICATE_FUNCTIONS=1 \
         -s IGNORE_CLOSURE_COMPILER_ERRORS=1 \
-        --closure 1 \
-        --llvm-lto 3
+        --closure 1
 
     if [ $? -eq 0 ]; then
         echo "✓ Release build successful"
@@ -102,12 +97,10 @@ build_release() {
             -flto \
             -ffast-math \
             -msimd128 \
-            -fno-rtti \
             -fomit-frame-pointer \
             -finline-functions \
             -funroll-loops \
-            -s AGGRESSIVE_VARIABLE_ELIMINATION=1 \
-            --llvm-lto 3
+            -s AGGRESSIVE_VARIABLE_ELIMINATION=1
 
         if [ $? -eq 0 ]; then
             echo "✓ Release build successful (without closure)"

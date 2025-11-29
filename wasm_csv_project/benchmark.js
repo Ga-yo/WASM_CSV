@@ -309,20 +309,23 @@ class BenchmarkController {
             reject(new Error('WASM 모듈 로드 타임아웃 (10초)'));
           }, 10000);
 
-          if (Module && Module.onRuntimeInitialized) {
-            // Already has callback, just wait
-            const originalCallback = Module.onRuntimeInitialized;
-            Module.onRuntimeInitialized = () => {
-              clearTimeout(timeout);
-              if (originalCallback) originalCallback();
-              resolve();
+          // Save original callback if it exists
+          const originalCallback = Module && Module.onRuntimeInitialized;
+
+          const initCallback = () => {
+            clearTimeout(timeout);
+            if (originalCallback && typeof originalCallback === 'function') {
+              originalCallback();
+            }
+            resolve();
+          };
+
+          if (typeof Module === 'undefined') {
+            window.Module = {
+              onRuntimeInitialized: initCallback
             };
           } else {
-            // Set new callback
-            Module.onRuntimeInitialized = () => {
-              clearTimeout(timeout);
-              resolve();
-            };
+            Module.onRuntimeInitialized = initCallback;
           }
         });
       }
@@ -506,9 +509,21 @@ document.addEventListener('DOMContentLoaded', () => {
   checkWasmModule();
 
   // Check again after module initialization
+  // Save original callback if it exists
+  const originalCallback = Module && Module.onRuntimeInitialized;
+
+  const initCallback = () => {
+    if (originalCallback && typeof originalCallback === 'function') {
+      originalCallback();
+    }
+    checkWasmModule();
+  };
+
   if (typeof Module !== 'undefined') {
-    Module.onRuntimeInitialized = () => {
-      checkWasmModule();
+    Module.onRuntimeInitialized = initCallback;
+  } else {
+    window.Module = {
+      onRuntimeInitialized: initCallback
     };
   }
 });
