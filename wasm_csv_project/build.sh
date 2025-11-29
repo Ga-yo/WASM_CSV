@@ -20,7 +20,7 @@ if ! command -v emcc &> /dev/null; then
 fi
 
 # Parse arguments
-BUILD_TYPE="standard"
+BUILD_TYPE="release"
 if [ "$1" == "debug" ] || [ "$1" == "-d" ]; then
     BUILD_TYPE="debug"
 fi
@@ -48,22 +48,74 @@ COMMON_FLAGS=(
     -std=c++17
 )
 
-# Build standard version (optimized)
-build_standard() {
+# Build release version with maximum performance optimizations
+build_release() {
     echo ""
-    echo "Building unified version..."
+    echo "Building RELEASE version with MAXIMUM PERFORMANCE optimizations..."
+    echo "Applying aggressive optimization flags..."
+    echo ""
+
     emcc csv_converter.cpp \
         -o csv_converter.js \
         "${COMMON_FLAGS[@]}" \
         -O3 \
-        -flto
+        -flto \
+        -ffast-math \
+        -msimd128 \
+        -msse \
+        -msse2 \
+        -fno-rtti \
+        -fomit-frame-pointer \
+        -finline-functions \
+        -funroll-loops \
+        -fvectorize \
+        -s AGGRESSIVE_VARIABLE_ELIMINATION=1 \
+        -s ELIMINATE_DUPLICATE_FUNCTIONS=1 \
+        -s IGNORE_CLOSURE_COMPILER_ERRORS=1 \
+        --closure 1 \
+        --llvm-lto 3
 
     if [ $? -eq 0 ]; then
-        echo "✓ Build successful"
+        echo "✓ Release build successful"
+        echo ""
+        echo "Performance optimizations applied:"
+        echo "  • Link-Time Optimization (LTO level 3)"
+        echo "  • SIMD vectorization enabled"
+        echo "  • Fast math optimizations"
+        echo "  • Aggressive function inlining"
+        echo "  • Loop unrolling"
+        echo "  • Dead code elimination"
+        echo "  • Closure compiler optimization"
+        echo ""
+        echo "Available functions:"
+        echo "  • convertToJson() - Standard conversion"
+        echo "  • convertToJsonAuto() - Auto-select based on size"
+        echo "  • convertToJsonOptimized() - Optimized algorithm"
         return 0
     else
-        echo "✗ Build failed"
-        return 1
+        echo "✗ Release build failed with closure compiler"
+        echo "Trying without closure compiler..."
+        emcc csv_converter.cpp \
+            -o csv_converter.js \
+            "${COMMON_FLAGS[@]}" \
+            -O3 \
+            -flto \
+            -ffast-math \
+            -msimd128 \
+            -fno-rtti \
+            -fomit-frame-pointer \
+            -finline-functions \
+            -funroll-loops \
+            -s AGGRESSIVE_VARIABLE_ELIMINATION=1 \
+            --llvm-lto 3
+
+        if [ $? -eq 0 ]; then
+            echo "✓ Release build successful (without closure)"
+            return 0
+        else
+            echo "✗ Build failed"
+            return 1
+        fi
     fi
 }
 
@@ -88,8 +140,8 @@ build_debug() {
 
 # Execute builds
 case $BUILD_TYPE in
-    "standard")
-        build_standard
+    "release")
+        build_release
         ;;
     "debug")
         build_debug
@@ -105,8 +157,8 @@ echo "Generated files:"
 ls -lh *.js *.wasm 2>/dev/null | awk '{print "  " $9 " (" $5 ")"}'
 echo ""
 echo "Usage:"
-echo "  ./build.sh        # Build optimized version"
-echo "  ./build.sh debug  # Build debug version"
+echo "  ./build.sh        # Build release version (maximum performance optimizations)"
+echo "  ./build.sh debug  # Build debug version (for development)"
 echo ""
 echo "To test, start a local server:"
 echo "  python3 -m http.server 8080"
