@@ -24,6 +24,14 @@ if (btnJsonMain)
 let convertedJsonData = null;
 let uploadedFileName = '';
 
+// Chart related variables
+let myChart = null;
+const chartTypeSelect = document.getElementById('chart-type');
+const chartLabelColSelect = document.getElementById('chart-label-col');
+const chartDataColSelect = document.getElementById('chart-data-col');
+const chartCanvas = document.getElementById('myChart');
+
+
 const btnDownloadJson = document.getElementById("btn-download-json");
 if (btnDownloadJson) {
   btnDownloadJson.addEventListener("click", () => {
@@ -171,12 +179,145 @@ async function loadAndConvertCsv() {
     renderJson(convertedJsonData);
     window.convertedData = convertedJsonData; // expose for debugging
 
+    // Initialize chart section
+    initializeChartSection();
+
   } catch (err) {
     console.error('CSV 변환 실패:', err);
     if (beautifiedEl) {
       beautifiedEl.textContent = 'CSV를 JSON으로 변환할 수 없습니다: ' + err.message;
     }
   }
+}
+
+function initializeChartSection() {
+  // Check if data exists and is not empty
+  if (!convertedJsonData || !convertedJsonData.data || convertedJsonData.data.length === 0) {
+    return;
+  }
+
+  const headers = Object.keys(convertedJsonData.data[0]);
+  let numericHeaders = [];
+
+  // Try to get numeric headers from meta info first
+  if (convertedJsonData.meta && convertedJsonData.meta.fields) {
+    numericHeaders = convertedJsonData.meta.fields
+      .filter(field => field.type === 'number')
+      .map(field => field.name);
+  } else {
+    // Fallback: Infer numeric headers from the first data row
+    console.warn('Meta info not found. Inferring numeric columns from data.');
+    const firstRow = convertedJsonData.data[0];
+    numericHeaders = headers.filter(h => !isNaN(parseFloat(firstRow[h])) && isFinite(firstRow[h]));
+  }
+
+  // Populate select options
+  chartLabelColSelect.innerHTML = headers.map(h => `<option value="${h}">${h}</option>`).join('');
+  chartDataColSelect.innerHTML = numericHeaders.map(h => `<option value="${h}">${h}</option>`).join('');
+
+  // Add event listeners to update chart
+  chartTypeSelect.addEventListener('change', renderChart);
+  chartLabelColSelect.addEventListener('change', renderChart);
+  chartDataColSelect.addEventListener('change', renderChart);
+
+  // Initial chart render
+  renderChart();
+}
+
+const CHART_COLORS = [
+  'rgba(54, 162, 235, 0.8)',
+  'rgba(255, 99, 132, 0.8)',
+  'rgba(75, 192, 192, 0.8)',
+  'rgba(255, 206, 86, 0.8)',
+  'rgba(153, 102, 255, 0.8)',
+  'rgba(255, 159, 64, 0.8)',
+  'rgba(199, 199, 199, 0.8)',
+];
+
+const CHART_BORDER_COLORS = CHART_COLORS.map(color => color.replace('0.8', '1'));
+
+
+function renderChart() {
+  if (!convertedJsonData || !chartCanvas) return;
+
+  const type = chartTypeSelect.value;
+  const labelCol = chartLabelColSelect.value;
+  const dataCol = chartDataColSelect.value;
+
+  if (!labelCol || !dataCol) return;
+
+  const labels = convertedJsonData.data.map(row => row[labelCol]);
+  const data = convertedJsonData.data.map(row => row[dataCol]);
+
+  if (myChart) {
+    myChart.destroy();
+  }
+
+  // --- Chart.js Dataset Configuration ---
+  const datasetOptions = {
+    label: dataCol,
+    data: data,
+    borderWidth: 1.5,
+  };
+
+  // Apply different styles based on chart type
+  if (type === 'bar') {
+    datasetOptions.backgroundColor = CHART_COLORS;
+    datasetOptions.borderColor = CHART_BORDER_COLORS;
+    datasetOptions.borderRadius = 4; // Rounded corners for bars
+  } else if (type === 'pie') {
+    datasetOptions.backgroundColor = CHART_COLORS;
+    datasetOptions.borderColor = '#fff';
+  } else if (type === 'line') {
+    datasetOptions.backgroundColor = 'rgba(54, 162, 235, 0.2)'; // Fill color under the line
+    datasetOptions.borderColor = 'rgba(54, 162, 235, 1)';
+    datasetOptions.pointBackgroundColor = 'rgba(54, 162, 235, 1)';
+    datasetOptions.pointBorderColor = '#fff';
+    datasetOptions.pointHoverRadius = 7;
+    datasetOptions.fill = true; // Enable fill
+    datasetOptions.tension = 0.1; // Make the line slightly curved
+  }
+
+  const ctx = chartCanvas.getContext('2d');
+  myChart = new Chart(ctx, {
+    type: type,
+    data: {
+      labels: labels,
+      datasets: [datasetOptions]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          position: 'top',
+          labels: {
+            font: {
+              family: "'Pretendard', sans-serif",
+              size: 12,
+            }
+          }
+        },
+        title: {
+          display: true,
+          text: `${labelCol} 별 ${dataCol} 분포`,
+          font: {
+            family: "'Pretendard', sans-serif",
+            size: 16,
+            weight: '600'
+          },
+          padding: { top: 10, bottom: 20 }
+        }
+      },
+      scales: {
+        y: {
+          grid: {
+            color: '#e5e7eb' // Lighter grid lines
+          }
+        }
+      }
+    }
+  });
 }
 
 // Start loading and converting when page loads
