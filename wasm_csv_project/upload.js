@@ -1,30 +1,10 @@
+import DBManager from './DBManager.js';
+
 const fileInput = document.getElementById("file-input");
 const dropzone = document.getElementById("dropzone");
 
-// --- IndexedDB helpers (simple Promise wrappers) ---
-function openDb(dbName = 'wasm_csv_db', storeName = 'files') {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open(dbName, 1);
-    req.onupgradeneeded = (e) => {
-      const db = e.target.result;
-      if (!db.objectStoreNames.contains(storeName)) {
-        db.createObjectStore(storeName);
-      }
-    };
-    req.onsuccess = (e) => resolve({ db: e.target.result, storeName });
-    req.onerror = (e) => reject(e.target.error);
-  });
-}
-
-function putFile(key, file) {
-  return openDb().then(({ db, storeName }) => new Promise((resolve, reject) => {
-    const tx = db.transaction(storeName, 'readwrite');
-    const store = tx.objectStore(storeName);
-    const req = store.put(file, key);
-    req.onsuccess = () => resolve();
-    req.onerror = (e) => reject(e.target.error);
-  }));
-}
+// Create an instance of the DBManager
+const dbManager = new DBManager();
 
 // 파일 선택 이벤트
 fileInput.addEventListener("change", (event) => {
@@ -66,27 +46,25 @@ function unhighlight() {
   dropzone.classList.remove("bg-neutral-100");
 }
 
-function handleFileUpload(file) {
-  console.log("업로드 파일:", file.name);
+async function handleFileUpload(file) {
+  console.log("업로드 파일:", file.name, "크기:", file.size, "bytes");
 
-  // 저장: 파일 자체를 IndexedDB에 넣고(추천) 메타 정보는 sessionStorage에 보관
-  putFile('uploaded-file', file).then(() => {
-    try {
-      sessionStorage.setItem('uploadedFileName', file.name);
-      sessionStorage.setItem('uploadedFileSize', String(file.size));
-    } catch (e) {
-      console.warn('sessionStorage 저장 실패', e);
-    }
-    // 변환 페이지로 이동
+  try {
+    // DBManager.putFile now handles both IndexedDB and sessionStorage
+    await dbManager.putFile('uploaded-file', file);
+    
+    // On success, redirect to the conversion page
     window.location.href = "convert.html";
-  }).catch((err) => {
-    console.error('IndexedDB 저장 실패, 세션에만 저장합니다', err);
-    try {
-      sessionStorage.setItem('uploadedFileName', file.name);
-      sessionStorage.setItem('uploadedFileSize', String(file.size));
-    } catch (e) {
-      console.warn('sessionStorage 저장 실패', e);
+
+  } catch (err) {
+    console.error('파일 저장 실패:', err);
+
+    // Check for QuotaExceededError, which DBManager will now throw on transaction error
+    if (err.name === 'QuotaExceededError' || (err.message && err.message.toLowerCase().includes('quota'))) {
+      alert(`파일 저장 실패: 파일이 너무 큽니다(현재 크기: ${(file.size / 1024 / 1024).toFixed(1)}MB). 브라우저의 로컬 저장 용량을 초과했습니다. 더 작은 파일을 사용해주세요.`);
+    } else {
+      alert(`알 수 없는 오류로 파일 저장에 실패했습니다: ${err.name}\n\n이 문제가 계속되면 다른 브라우저를 사용해보세요.`);
     }
-    window.location.href = "convert.html";
-  });
+    // Do NOT redirect on failure
+  }
 }
