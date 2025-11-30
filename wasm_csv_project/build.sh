@@ -60,7 +60,6 @@ build_release() {
         "${COMMON_FLAGS[@]}" \
         -O3 \
         -flto \
-        -ffast-math \
         -msimd128 \
         -fomit-frame-pointer \
         -finline-functions \
@@ -76,7 +75,6 @@ build_release() {
         echo "Performance optimizations applied:"
         echo "  • Link-Time Optimization (LTO level 3)"
         echo "  • SIMD vectorization enabled"
-        echo "  • Fast math optimizations"
         echo "  • Aggressive function inlining"
         echo "  • Loop unrolling"
         echo "  • Dead code elimination"
@@ -95,7 +93,6 @@ build_release() {
             "${COMMON_FLAGS[@]}" \
             -O3 \
             -flto \
-            -ffast-math \
             -msimd128 \
             -fomit-frame-pointer \
             -finline-functions \
