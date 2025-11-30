@@ -6,35 +6,41 @@
 #include <sstream>
 #include <algorithm>
 #include <cmath>
-#include <regex>
 #include <set>
 #include <unordered_set>
 #include <unordered_map>
 #include <iomanip>
+#include <regex>
 #include <ctime>
-#include <memory>
+#include <cerrno> 
 
+using namespace std;
 using namespace emscripten;
 
 // ============================================================================
-// CSV to JSON Converter - Unified Version
-// Combines basic parsing improvements with optimized large file processing
+// CSV to JSON Converter - Single Header Model (Optimized & Stable)
 // ============================================================================
+
+// Forward Declarations 
+// 모든 핵심 기능은 convertToJsonOptimized에 통합됩니다.
+string convertToJsonOptimized(const string& csvContent, const string& filename);
+string convertToJson(const string& csvContent, const string& filename);
+string convertToJsonMetadataOnly(const string& csvContent, const string& filename);
+string convertToJsonAuto(const string& csvContent, const string& filename);
 
 // =========================
 // Utility Functions
 // =========================
 
-inline std::string trim(const std::string& str) {
+inline string trim(const string& str) {
     const char* whitespace = " \t\r\n";
     size_t first = str.find_first_not_of(whitespace);
-    if (first == std::string::npos) return "";
+    if (first == string::npos) return "";
     size_t last = str.find_last_not_of(whitespace);
     return str.substr(first, last - first + 1);
 }
 
-// Remove BOM from string
-std::string removeBOM(const std::string& str) {
+string removeBOM(const string& str) {
     if (str.length() >= 3 &&
         (unsigned char)str[0] == 0xEF &&
         (unsigned char)str[1] == 0xBB &&
@@ -44,9 +50,8 @@ std::string removeBOM(const std::string& str) {
     return str;
 }
 
-// Normalize line endings to \n
-std::string normalizeLineEndings(const std::string& str) {
-    std::string result;
+string normalizeLineEndings(const string& str) {
+    string result;
     result.reserve(str.size());
     for (size_t i = 0; i < str.length(); i++) {
         if (str[i] == '\r') {
@@ -63,8 +68,8 @@ std::string normalizeLineEndings(const std::string& str) {
     return result;
 }
 
-inline std::string escapeJson(const std::string& str) {
-    std::string result;
+inline string escapeJson(const string& str) {
+    string result;
     result.reserve(str.size() * 1.1);
     for (char c : str) {
         switch (c) {
@@ -81,6 +86,47 @@ inline std::string escapeJson(const std::string& str) {
     return result;
 }
 
+// 💡 High-Performance Numeric Parsing
+inline double stringToDouble(const string& str) {
+    if (str.empty()) return NAN;
+    const char* c_str = str.c_str();
+    char* end = nullptr;
+    errno = 0; 
+
+    double num = strtod(c_str, &end);
+
+    if (end == c_str || *end != '\0' || errno == ERANGE) {
+        return NAN;
+    }
+    return num;
+}
+
+// 💡 Numeric String Cleaning (Removes commas and units)
+// 정규식을 사용하여 숫자 형식의 문자열을 정리합니다. (예: "₩ 1,234.56 kg" -> "1234.56")
+string cleanNumericString(const string& input) {
+    // 1단계: 문자열에서 숫자처럼 보이는 첫 부분을 찾습니다. (쉼표, 소수점, 부호 포함)
+    // 예: "₩ 1,234.56 kg" -> "1,234.56"
+    static const regex num_regex(R"([+-]?\s*[\d,]+(?:\.\d+)?)");
+    smatch match;
+    string extracted_num;
+
+    if (regex_search(input, match, num_regex) && !match.empty()) {
+        extracted_num = match[0].str();
+        
+        // 2단계: 찾은 부분에서 쉼표(,)와 공백을 제거합니다.
+        extracted_num.erase(remove(extracted_num.begin(), extracted_num.end(), ','), extracted_num.end());
+        extracted_num.erase(remove(extracted_num.begin(), extracted_num.end(), ' '), extracted_num.end());
+
+        if (!extracted_num.empty() && !isnan(stringToDouble(extracted_num))) {
+            return extracted_num;
+        }
+    }
+
+    return input; // 숫자 부분을 찾지 못하면 원본 반환
+}
+
+// ---------------------------------------------------------------------------------
+
 // =========================
 // Type Detection
 // =========================
@@ -93,7 +139,7 @@ enum class DataType {
     STRING
 };
 
-inline std::string dataTypeToString(DataType type) {
+inline string dataTypeToString(DataType type) {
     switch (type) {
         case DataType::INTEGER: return "integer";
         case DataType::FLOAT: return "float";
@@ -104,99 +150,63 @@ inline std::string dataTypeToString(DataType type) {
     return "string";
 }
 
-// Fast type checking
 class TypeChecker {
-private:
-    static constexpr bool isDigitTable[256] = {
-        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,
-        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
-    };
-
 public:
-    static inline bool isDigit(char c) {
-        return isDigitTable[static_cast<unsigned char>(c)];
+    static bool isInteger(const string& str) {
+        double num = stringToDouble(str);
+        return !isnan(num) && trunc(num) == num;
     }
 
-    static bool isInteger(const std::string& str) {
-        if (str.empty()) return false;
-        size_t start = (str[0] == '-' || str[0] == '+') ? 1 : 0;
-        if (start >= str.length()) return false;
-        for (size_t i = start; i < str.length(); i++) {
-            if (!isDigit(str[i])) return false;
-        }
-        return true;
+    static bool isFloat(const string& str) {
+        double num = stringToDouble(str);
+        return !isnan(num) && trunc(num) != num;
     }
 
-    static bool isFloat(const std::string& str) {
-        if (str.empty()) return false;
-        bool hasDecimal = false;
-        bool hasExponent = false;
-        size_t start = (str[0] == '-' || str[0] == '+') ? 1 : 0;
-        if (start >= str.length()) return false;
-
-        for (size_t i = start; i < str.length(); i++) {
-            char c = str[i];
-            if (c == '.') {
-                if (hasDecimal || hasExponent) return false;
-                hasDecimal = true;
-            } else if (c == 'e' || c == 'E') {
-                if (hasExponent || i == start) return false;
-                hasExponent = true;
-                if (i + 1 < str.length() && (str[i + 1] == '+' || str[i + 1] == '-')) {
-                    i++;
-                }
-            } else if (!isDigit(c)) {
-                return false;
-            }
-        }
-        return hasDecimal || hasExponent;
+    static bool isNumeric(const string& str) {
+        return !isnan(stringToDouble(str));
     }
-
-    static bool isBoolean(const std::string& str) {
+    
+    static bool isBoolean(const string& str) {
         if (str.length() > 5) return false;
-        std::string lower = str;
-        std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+        string lower = str;
+        transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
         return lower == "true" || lower == "false" || lower == "yes" ||
                lower == "no" || lower == "1" || lower == "0";
     }
 
-    static bool isDate(const std::string& str) {
+    static bool isDate(const string& str) {
         if (str.length() < 8 || str.length() > 10) return false;
+        // Simplified check for YYYY-MM-DD or YYYY/MM/DD
         if ((str[4] == '-' || str[4] == '/') &&
             (str.length() >= 10 && (str[7] == '-' || str[7] == '/'))) {
-            return isDigit(str[0]) && isDigit(str[1]) && isDigit(str[2]) && isDigit(str[3]) &&
-                   isDigit(str[5]) && isDigit(str[6]) && isDigit(str[8]) && isDigit(str[9]);
+            return true; 
         }
         return false;
     }
 
-    static bool isNull(const std::string& str) {
+    static bool isNull(const string& str) {
         if (str.empty()) return true;
         if (str.length() > 4) return false;
-        std::string lower = str;
-        std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+        string lower = str;
+        transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
         return lower == "null" || lower == "na" || lower == "n/a" ||
                lower == "nan" || lower == "-" || lower == "";
     }
 };
 
+// ---------------------------------------------------------------------------------
+
 // =========================
-// CSV Parser
+// CSV Parser (Single Header Logic Restored)
 // =========================
 
 struct CSVParseResult {
-    std::vector<std::string> headers;
-    std::vector<std::vector<std::string>> rows;
+    vector<string> headers;
+    vector<vector<string>> rows;
     char delimiter;
 };
 
-char detectDelimiter(const std::string& content) {
+char detectDelimiter(const string& content) {
     size_t commaCount = 0, tabCount = 0, semicolonCount = 0;
     bool inQuotes = false;
     size_t lineCount = 0;
@@ -218,13 +228,13 @@ char detectDelimiter(const std::string& content) {
     return ',';
 }
 
-// Full CSV parser that handles quoted fields with newlines
-CSVParseResult parseCSV(const std::string& content) {
+// Restored classic single-header parsing logic
+CSVParseResult parseCSV(const string& content) {
     CSVParseResult result;
     result.delimiter = detectDelimiter(content);
 
-    std::vector<std::string> currentRow;
-    std::string field;
+    vector<string> currentRow;
+    string field;
     bool inQuotes = false;
     bool isFirstRow = true;
 
@@ -241,16 +251,15 @@ CSVParseResult parseCSV(const std::string& content) {
         } else if (c == result.delimiter && !inQuotes) {
             currentRow.push_back(trim(field));
             field.clear();
-        } else if (c == '\n' && !inQuotes) {
+        } else if ((c == '\n' || c == '\r') && !inQuotes) {
+            if (c == '\r' && i + 1 < content.length() && content[i + 1] == '\n') i++;
+
             currentRow.push_back(trim(field));
             field.clear();
 
             bool isEmpty = true;
             for (const auto& f : currentRow) {
-                if (!f.empty()) {
-                    isEmpty = false;
-                    break;
-                }
+                if (!f.empty()) { isEmpty = false; break; }
             }
 
             if (!isEmpty) {
@@ -273,12 +282,8 @@ CSVParseResult parseCSV(const std::string& content) {
 
         bool isEmpty = true;
         for (const auto& f : currentRow) {
-            if (!f.empty()) {
-                isEmpty = false;
-                break;
-            }
+            if (!f.empty()) { isEmpty = false; break; }
         }
-
         if (!isEmpty) {
             if (isFirstRow) {
                 result.headers = currentRow;
@@ -291,6 +296,8 @@ CSVParseResult parseCSV(const std::string& content) {
     return result;
 }
 
+// ---------------------------------------------------------------------------------
+
 // =========================
 // Column Statistics
 // =========================
@@ -299,18 +306,18 @@ struct ColumnStats {
     DataType type = DataType::STRING;
     uint32_t nullCount = 0;
     uint32_t uniqueCount = 0;
-    double min = 0;
-    double max = 0;
+    double min = NAN; 
+    double max = NAN; 
     double sum = 0;
-    double mean = 0;
+    double mean = NAN; 
     uint32_t count = 0;
     uint32_t minLength = UINT32_MAX;
     uint32_t maxLength = 0;
     uint32_t trueCount = 0;
     uint32_t falseCount = 0;
-    std::string minDate;
-    std::string maxDate;
-    double m2 = 0; // For Welford's algorithm
+    string minDate;
+    string maxDate;
+    double m2 = 0; 
 
     void addNumericValue(double value) {
         count++;
@@ -320,8 +327,8 @@ struct ColumnStats {
             min = max = value;
             mean = value;
         } else {
-            min = std::min(min, value);
-            max = std::max(max, value);
+            min = ::min(min, value);
+            max = ::max(max, value);
 
             double delta = value - mean;
             mean += delta / count;
@@ -331,11 +338,11 @@ struct ColumnStats {
     }
 
     double getStdDev() const {
-        return count > 1 ? std::sqrt(m2 / (count - 1)) : 0;
+        return count > 1 ? sqrt(m2 / (count - 1)) : NAN; 
     }
 };
 
-DataType detectColumnType(const std::vector<std::string>& values) {
+DataType detectColumnType(const vector<string>& values) {
     bool allInteger = true;
     bool allFloat = true;
     bool allBoolean = true;
@@ -346,8 +353,14 @@ DataType detectColumnType(const std::vector<std::string>& values) {
         if (TypeChecker::isNull(val)) continue;
         nonNullCount++;
 
-        if (allInteger && !TypeChecker::isInteger(val)) allInteger = false;
-        if (allFloat && !TypeChecker::isFloat(val) && !TypeChecker::isInteger(val)) allFloat = false;
+        if (!TypeChecker::isNumeric(val)) {
+             allInteger = false;
+             allFloat = false;
+        } else {
+            if (allInteger && !TypeChecker::isInteger(val)) allInteger = false;
+            if (allFloat && !TypeChecker::isFloat(val) && !TypeChecker::isInteger(val)) allFloat = false;
+        }
+
         if (allBoolean && !TypeChecker::isBoolean(val)) allBoolean = false;
         if (allDate && !TypeChecker::isDate(val)) allDate = false;
 
@@ -362,503 +375,56 @@ DataType detectColumnType(const std::vector<std::string>& values) {
     return DataType::STRING;
 }
 
-// =========================
-// Main Conversion Functions
-// =========================
 
-std::string convertToJson(const std::string& csvContent, const std::string& filename) {
-    // Preprocess
-    std::string content = removeBOM(csvContent);
+// ---------------------------------------------------------------------------------
+
+// =================================================================================
+// Main Optimized Conversion Function 
+// =================================================================================
+
+inline void jsonSafeDouble(ostringstream& json, double value) {
+    json << setprecision(16) << defaultfloat; 
+    
+    if (isfinite(value)) {
+        json << value; 
+    } else {
+        json << "null"; 
+    }
+
+    json << fixed << setprecision(2); 
+}
+
+// 💡 Reverted to 2-argument signature
+string convertToJsonOptimized(const string& csvContent, const string& filename) {
+    // 1. Preprocess
+    string content = removeBOM(csvContent);
     content = normalizeLineEndings(content);
 
-    // Parse CSV
-    CSVParseResult parsed = parseCSV(content);
+    // 2. Standard Single-Header Parsing
+    CSVParseResult parsed = parseCSV(content); 
 
-    std::vector<std::string>& headers = parsed.headers;
-    std::vector<std::vector<std::string>>& rows = parsed.rows;
+    vector<string>& headers = parsed.headers;
+    vector<vector<string>>& rows = parsed.rows;
     char delimiter = parsed.delimiter;
-
+    
     if (headers.empty()) {
-        return "{\"error\": \"Empty or invalid CSV file\", \"metadata\": {\"filename\": \"" + escapeJson(filename) + "\"}}";
-    }
-
-    int numColumns = headers.size();
-    int numRows = rows.size();
-
-    // Normalize row lengths
-    for (auto& row : rows) {
-        while ((int)row.size() < numColumns) {
-            row.push_back("");
-        }
-        if ((int)row.size() > numColumns) {
-            row.resize(numColumns);
-        }
-    }
-
-    // Collect column values
-    std::vector<std::vector<std::string>> columnValues(numColumns);
-    for (const auto& row : rows) {
-        for (int i = 0; i < numColumns && i < (int)row.size(); i++) {
-            columnValues[i].push_back(row[i]);
-        }
-    }
-
-    // Detect types and calculate statistics
-    std::vector<ColumnStats> stats(numColumns);
-    std::vector<DataType> columnTypes(numColumns);
-
-    for (int i = 0; i < numColumns; i++) {
-        columnTypes[i] = detectColumnType(columnValues[i]);
-        stats[i].type = columnTypes[i];
-        std::set<std::string> uniqueValues;
-
-        for (const auto& val : columnValues[i]) {
-            if (TypeChecker::isNull(val)) {
-                stats[i].nullCount++;
-                continue;
-            }
-
-            uniqueValues.insert(val);
-
-            if (columnTypes[i] == DataType::INTEGER || columnTypes[i] == DataType::FLOAT) {
-                try {
-                    double num = std::stod(val);
-                    stats[i].addNumericValue(num);
-                } catch (...) {}
-            } else if (columnTypes[i] == DataType::STRING) {
-                uint32_t len = val.length();
-                stats[i].minLength = std::min(stats[i].minLength, len);
-                stats[i].maxLength = std::max(stats[i].maxLength, len);
-            } else if (columnTypes[i] == DataType::BOOLEAN) {
-                std::string lower = val;
-                std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
-                if (lower == "true" || lower == "yes" || lower == "1") {
-                    stats[i].trueCount++;
-                } else {
-                    stats[i].falseCount++;
-                }
-            } else if (columnTypes[i] == DataType::DATE) {
-                if (stats[i].minDate.empty() || val < stats[i].minDate) {
-                    stats[i].minDate = val;
-                }
-                if (stats[i].maxDate.empty() || val > stats[i].maxDate) {
-                    stats[i].maxDate = val;
-                }
-            }
-        }
-
-        stats[i].uniqueCount = uniqueValues.size();
-        if (stats[i].minLength == UINT32_MAX) stats[i].minLength = 0;
-    }
-
-    // Build JSON output
-    std::ostringstream json;
-    json << std::fixed << std::setprecision(2);
-
-    std::time_t now = std::time(nullptr);
-    char timestamp[30];
-    std::strftime(timestamp, sizeof(timestamp), "%Y-%m-%dT%H:%M:%SZ", std::gmtime(&now));
-
-    json << "{\n";
-
-    // Metadata
-    json << "  \"metadata\": {\n";
-    json << "    \"filename\": \"" << escapeJson(filename) << "\",\n";
-    json << "    \"total_rows\": " << numRows << ",\n";
-    json << "    \"total_columns\": " << numColumns << ",\n";
-    json << "    \"file_size_bytes\": " << csvContent.size() << ",\n";
-    json << "    \"encoding\": \"UTF-8\",\n";
-    json << "    \"delimiter\": \"" << (delimiter == '\t' ? "\\t" : std::string(1, delimiter)) << "\",\n";
-    json << "    \"has_header\": true,\n";
-    json << "    \"created_at\": \"" << timestamp << "\"\n";
-    json << "  },\n";
-
-    // Schema
-    json << "  \"schema\": {\n";
-    json << "    \"columns\": [\n";
-    for (int i = 0; i < numColumns; i++) {
-        json << "      {\n";
-        json << "        \"index\": " << i << ",\n";
-        json << "        \"name\": \"" << escapeJson(headers[i]) << "\",\n";
-        json << "        \"type\": \"" << dataTypeToString(columnTypes[i]) << "\",\n";
-        json << "        \"nullable\": " << (stats[i].nullCount > 0 ? "true" : "false") << ",\n";
-        json << "        \"unique\": " << (stats[i].uniqueCount == (uint32_t)(numRows - stats[i].nullCount) ? "true" : "false") << "\n";
-        json << "      }" << (i < numColumns - 1 ? "," : "") << "\n";
-    }
-    json << "    ]\n";
-    json << "  },\n";
-
-    // Statistics
-    json << "  \"statistics\": {\n";
-    json << "    \"columns\": {\n";
-    for (int i = 0; i < numColumns; i++) {
-        json << "      \"" << escapeJson(headers[i]) << "\": {\n";
-        json << "        \"type\": \"" << dataTypeToString(columnTypes[i]) << "\",\n";
-        json << "        \"null_count\": " << stats[i].nullCount << ",\n";
-        json << "        \"unique_count\": " << stats[i].uniqueCount;
-
-        if (columnTypes[i] == DataType::INTEGER || columnTypes[i] == DataType::FLOAT) {
-            json << ",\n        \"min\": " << stats[i].min;
-            json << ",\n        \"max\": " << stats[i].max;
-            json << ",\n        \"mean\": " << stats[i].mean;
-            json << ",\n        \"std_dev\": " << stats[i].getStdDev();
-            json << ",\n        \"sum\": " << stats[i].sum;
-        } else if (columnTypes[i] == DataType::STRING) {
-            json << ",\n        \"min_length\": " << stats[i].minLength;
-            json << ",\n        \"max_length\": " << stats[i].maxLength;
-        } else if (columnTypes[i] == DataType::BOOLEAN) {
-            json << ",\n        \"true_count\": " << stats[i].trueCount;
-            json << ",\n        \"false_count\": " << stats[i].falseCount;
-        } else if (columnTypes[i] == DataType::DATE) {
-            json << ",\n        \"min\": \"" << stats[i].minDate << "\"";
-            json << ",\n        \"max\": \"" << stats[i].maxDate << "\"";
-        }
-
-        json << "\n      }" << (i < numColumns - 1 ? "," : "") << "\n";
-    }
-    json << "    }\n";
-    json << "  },\n";
-
-    // Data
-    json << "  \"data\": [\n";
-    for (int r = 0; r < numRows; r++) {
-        json << "    {";
-        for (int c = 0; c < numColumns; c++) {
-            std::string value = (c < (int)rows[r].size()) ? rows[r][c] : "";
-            json << "\n      \"" << escapeJson(headers[c]) << "\": ";
-
-            if (TypeChecker::isNull(value)) {
-                json << "null";
-            } else if (columnTypes[c] == DataType::INTEGER) {
-                json << value;
-            } else if (columnTypes[c] == DataType::FLOAT) {
-                try {
-                    json << std::stod(value);
-                } catch (...) {
-                    json << "\"" << escapeJson(value) << "\"";
-                }
-            } else if (columnTypes[c] == DataType::BOOLEAN) {
-                std::string lower = value;
-                std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
-                json << ((lower == "true" || lower == "yes" || lower == "1") ? "true" : "false");
-            } else {
-                json << "\"" << escapeJson(value) << "\"";
-            }
-
-            if (c < numColumns - 1) json << ",";
-        }
-        json << "\n    }" << (r < numRows - 1 ? "," : "") << "\n";
-    }
-    json << "  ],\n";
-
-    json << "  \"errors\": []\n";
-    json << "}";
-
-    return json.str();
-}
-
-// Metadata-only version for very large files
-std::string convertToJsonMetadataOnly(const std::string& csvContent, const std::string& filename) {
-    std::string content = removeBOM(csvContent);
-    content = normalizeLineEndings(content);
-
-    CSVParseResult parsed = parseCSV(content);
-
-    std::vector<std::string>& headers = parsed.headers;
-    std::vector<std::vector<std::string>>& rows = parsed.rows;
-    char delimiter = parsed.delimiter;
-
-    if (headers.empty()) {
-        return "{\"error\": \"Empty or invalid CSV file\", \"metadata\": {\"filename\": \"" + escapeJson(filename) + "\"}}";
-    }
-
-    int numColumns = headers.size();
-    int numRows = rows.size();
-
-    // Normalize row lengths
-    for (auto& row : rows) {
-        while ((int)row.size() < numColumns) {
-            row.push_back("");
-        }
-        if ((int)row.size() > numColumns) {
-            row.resize(numColumns);
-        }
-    }
-
-    // Collect samples for type detection (first 1000 rows)
-    std::vector<std::vector<std::string>> sampleData(numColumns);
-    int sampleSize = std::min(numRows, 1000);
-
-    for (int r = 0; r < sampleSize; r++) {
-        for (int i = 0; i < numColumns && i < (int)rows[r].size(); i++) {
-            sampleData[i].push_back(rows[r][i]);
-        }
-    }
-
-    // Detect types and calculate statistics
-    std::vector<ColumnStats> stats(numColumns);
-    std::vector<DataType> columnTypes(numColumns);
-    std::vector<std::unordered_set<std::string>> uniqueValues(numColumns);
-
-    for (int i = 0; i < numColumns; i++) {
-        columnTypes[i] = detectColumnType(sampleData[i]);
-        stats[i].type = columnTypes[i];
-    }
-
-    // Process all rows for statistics
-    for (const auto& row : rows) {
-        for (int i = 0; i < numColumns && i < (int)row.size(); i++) {
-            const std::string& val = row[i];
-
-            if (TypeChecker::isNull(val)) {
-                stats[i].nullCount++;
-                continue;
-            }
-
-            if (uniqueValues[i].size() < 10000) {
-                uniqueValues[i].insert(val);
-            }
-
-            if (columnTypes[i] == DataType::INTEGER || columnTypes[i] == DataType::FLOAT) {
-                try {
-                    double num = std::stod(val);
-                    stats[i].addNumericValue(num);
-                } catch (...) {}
-            }
-        }
-    }
-
-    for (int i = 0; i < numColumns; i++) {
-        stats[i].uniqueCount = uniqueValues[i].size();
-    }
-
-    // Build JSON output (metadata only)
-    std::ostringstream json;
-    json << std::fixed << std::setprecision(2);
-
-    std::time_t now = std::time(nullptr);
-    char timestamp[30];
-    std::strftime(timestamp, sizeof(timestamp), "%Y-%m-%dT%H:%M:%SZ", std::gmtime(&now));
-
-    json << "{\n";
-
-    // Metadata
-    json << "  \"metadata\": {\n";
-    json << "    \"filename\": \"" << escapeJson(filename) << "\",\n";
-    json << "    \"total_rows\": " << numRows << ",\n";
-    json << "    \"total_columns\": " << numColumns << ",\n";
-    json << "    \"file_size_bytes\": " << csvContent.size() << ",\n";
-    json << "    \"encoding\": \"UTF-8\",\n";
-    json << "    \"delimiter\": \"" << (delimiter == '\t' ? "\\t" : std::string(1, delimiter)) << "\",\n";
-    json << "    \"has_header\": true,\n";
-    json << "    \"created_at\": \"" << timestamp << "\",\n";
-    json << "    \"data_included\": false,\n";
-    json << "    \"processing_info\": {\n";
-    json << "      \"reason\": \"Large file - data excluded to save memory\"\n";
-    json << "    }\n";
-    json << "  },\n";
-
-    // Schema
-    json << "  \"schema\": {\n";
-    json << "    \"columns\": [\n";
-    for (int i = 0; i < numColumns; i++) {
-        json << "      {\n";
-        json << "        \"index\": " << i << ",\n";
-        json << "        \"name\": \"" << escapeJson(headers[i]) << "\",\n";
-        json << "        \"type\": \"" << dataTypeToString(columnTypes[i]) << "\",\n";
-        json << "        \"nullable\": " << (stats[i].nullCount > 0 ? "true" : "false") << "\n";
-        json << "      }" << (i < numColumns - 1 ? "," : "") << "\n";
-    }
-    json << "    ]\n";
-    json << "  },\n";
-
-    // Statistics
-    json << "  \"statistics\": {\n";
-    json << "    \"columns\": {\n";
-    for (int i = 0; i < numColumns; i++) {
-        json << "      \"" << escapeJson(headers[i]) << "\": {\n";
-        json << "        \"type\": \"" << dataTypeToString(columnTypes[i]) << "\",\n";
-        json << "        \"null_count\": " << stats[i].nullCount << ",\n";
-        json << "        \"unique_count\": " << stats[i].uniqueCount;
-
-        if (columnTypes[i] == DataType::INTEGER || columnTypes[i] == DataType::FLOAT) {
-            if (stats[i].count > 0) {
-                json << ",\n        \"min\": " << stats[i].min;
-                json << ",\n        \"max\": " << stats[i].max;
-                json << ",\n        \"mean\": " << stats[i].mean;
-                json << ",\n        \"std_dev\": " << stats[i].getStdDev();
-            }
-        }
-
-        json << "\n      }" << (i < numColumns - 1 ? "," : "") << "\n";
-    }
-    json << "    }\n";
-    json << "  },\n";
-
-    json << "  \"data\": [],\n";
-    json << "  \"errors\": []\n";
-    json << "}";
-
-    return json.str();
-}
-
-// Auto-select based on file size
-std::string convertToJsonAuto(const std::string& csvContent, const std::string& filename) {
-    // If file is larger than 10MB, use metadata-only mode
-    if (csvContent.size() > 10 * 1024 * 1024) {
-        return convertToJsonMetadataOnly(csvContent, filename);
-    }
-    return convertToJson(csvContent, filename);
-}
-
-// =========================
-// Optimized Version
-// =========================
-
-// Fast in-place trim
-inline void trimInPlace(std::string& str) {
-    const char* whitespace = " \t\r\n";
-    size_t first = str.find_first_not_of(whitespace);
-    if (first == std::string::npos) {
-        str.clear();
-        return;
-    }
-    size_t last = str.find_last_not_of(whitespace);
-    if (first > 0 || last < str.length() - 1) {
-        str = str.substr(first, last - first + 1);
-    }
-}
-
-// Fast BOM removal (returns pointer offset)
-inline const char* skipBOM(const char* data, size_t& length) {
-    if (length >= 3 &&
-        (unsigned char)data[0] == 0xEF &&
-        (unsigned char)data[1] == 0xBB &&
-        (unsigned char)data[2] == 0xBF) {
-        length -= 3;
-        return data + 3;
-    }
-    return data;
-}
-
-// Optimized version with aggressive performance optimizations
-std::string convertToJsonOptimized(const std::string& csvContent, const std::string& filename) {
-    // Skip BOM
-    size_t dataLength = csvContent.length();
-    const char* data = skipBOM(csvContent.c_str(), dataLength);
-
-    // Detect delimiter
-    char delimiter = ',';
-    {
-        uint32_t commaCount = 0, tabCount = 0, semicolonCount = 0;
-        bool inQuotes = false;
-        uint32_t lineCount = 0;
-
-        for (size_t i = 0; i < dataLength && lineCount < 5; i++) {
-            char c = data[i];
-            if (c == '"') inQuotes = !inQuotes;
-            else if (!inQuotes) {
-                if (c == ',') commaCount++;
-                else if (c == '\t') tabCount++;
-                else if (c == ';') semicolonCount++;
-                else if (c == '\n') lineCount++;
-            }
-        }
-
-        if (tabCount > commaCount && tabCount > semicolonCount) delimiter = '\t';
-        else if (semicolonCount > commaCount && semicolonCount > tabCount) delimiter = ';';
-    }
-
-    // Parse CSV with pre-allocated memory
-    std::vector<std::string> headers;
-    headers.reserve(50);
-
-    std::vector<std::vector<std::string>> rows;
-    std::vector<std::string> currentRow;
-    currentRow.reserve(50);
-
-    std::string field;
-    field.reserve(256);
-
-    bool inQuotes = false;
-    bool isFirstRow = true;
-
-    for (size_t i = 0; i < dataLength; i++) {
-        char c = data[i];
-
-        if (c == '"') {
-            if (inQuotes && i + 1 < dataLength && data[i + 1] == '"') {
-                field += '"';
-                i++;
-            } else {
-                inQuotes = !inQuotes;
-            }
-        } else if (c == delimiter && !inQuotes) {
-            trimInPlace(field);
-            currentRow.push_back(std::move(field));
-            field.clear();
-            field.reserve(256);
-        } else if ((c == '\n' || c == '\r') && !inQuotes) {
-            if (c == '\r' && i + 1 < dataLength && data[i + 1] == '\n') i++;
-
-            trimInPlace(field);
-            currentRow.push_back(std::move(field));
-            field.clear();
-            field.reserve(256);
-
-            bool hasData = false;
-            for (const auto& f : currentRow) {
-                if (!f.empty()) {
-                    hasData = true;
-                    break;
-                }
-            }
-
-            if (hasData) {
-                if (isFirstRow) {
-                    headers = std::move(currentRow);
-                    isFirstRow = false;
-                    size_t estimatedRows = dataLength / (headers.size() * 20);
-                    rows.reserve(std::min(estimatedRows, size_t(100000)));
-                } else {
-                    rows.push_back(std::move(currentRow));
-                }
-            }
-            currentRow.clear();
-            currentRow.reserve(headers.size());
-        } else {
-            field += c;
-        }
-    }
-
-    // Last row
-    if (!field.empty() || !currentRow.empty()) {
-        trimInPlace(field);
-        currentRow.push_back(std::move(field));
-        bool hasData = false;
-        for (const auto& f : currentRow) {
-            if (!f.empty()) { hasData = true; break; }
-        }
-        if (hasData) {
-            if (isFirstRow) headers = std::move(currentRow);
-            else rows.push_back(std::move(currentRow));
-        }
-    }
-
-    if (headers.empty()) {
-        return "{\"error\":\"Empty CSV\",\"metadata\":{\"filename\":\"" + filename + "\"}}";
+        return "{\"error\":\"Empty CSV\",\"metadata\":{\"filename\":\"" + escapeJson(filename) + "\"}}";
     }
 
     const int numColumns = headers.size();
-    const int numRows = rows.size();
+    int numRows = rows.size();
 
-    // Normalize row lengths
+    // 3. Normalize row lengths and clean numeric strings
     for (auto& row : rows) {
         row.resize(numColumns);
+        for (int i = 0; i < numColumns; ++i) {
+            // Apply cleaning *before* analysis
+            row[i] = cleanNumericString(row[i]); 
+        }
     }
-
-    // Transpose for column-wise processing
-    std::vector<std::vector<std::string>> columnData(numColumns);
+    
+    // 4. Transpose for column-wise analysis
+    vector<vector<string>> columnData(numColumns);
     for (int i = 0; i < numColumns; i++) {
         columnData[i].reserve(numRows);
     }
@@ -868,42 +434,57 @@ std::string convertToJsonOptimized(const std::string& csvContent, const std::str
         }
     }
 
-    // Type detection and stats (simplified)
-    std::vector<DataType> columnTypes(numColumns);
-    std::vector<ColumnStats> stats(numColumns);
-
+    // 5. Determine Types and calculate full stats (using cleaned and transposed data)
+    vector<DataType> columnTypes(numColumns);
+    vector<ColumnStats> stats(numColumns);
+    
     for (int i = 0; i < numColumns; i++) {
-        columnTypes[i] = detectColumnType(columnData[i]);
+        vector<string> sample_data;
+        int sampleSize = ::min(numRows, 1000);
+        for(int r = 0; r < sampleSize; ++r) {
+            sample_data.push_back(columnData[i][r]);
+        }
+        
+        columnTypes[i] = detectColumnType(sample_data);
         stats[i].type = columnTypes[i];
-
-        std::unordered_set<std::string> uniqueVals;
-        uniqueVals.reserve(std::min(numRows, 10000));
+        
+        unordered_set<string> uniqueVals;
+        uniqueVals.reserve(::min(numRows, 50000)); 
 
         for (const auto& val : columnData[i]) {
             if (TypeChecker::isNull(val)) {
                 stats[i].nullCount++;
                 continue;
             }
-            if (uniqueVals.size() < 10000) uniqueVals.insert(val);
 
+            if (uniqueVals.size() < 50000) { 
+                uniqueVals.insert(val);
+            }
+            
             if (columnTypes[i] == DataType::INTEGER || columnTypes[i] == DataType::FLOAT) {
-                try {
-                    double num = std::stod(val);
+                double num = stringToDouble(val);
+                if (!isnan(num)) {
                     stats[i].addNumericValue(num);
-                } catch (...) {}
+                }
+            } else if (columnTypes[i] == DataType::STRING) {
+                uint32_t len = val.length();
+                stats[i].minLength = ::min(stats[i].minLength, len);
+                stats[i].maxLength = ::max(stats[i].maxLength, len);
             }
         }
         stats[i].uniqueCount = uniqueVals.size();
+        if (stats[i].minLength == UINT32_MAX) stats[i].minLength = 0;
     }
 
-    // Build JSON
-    std::ostringstream json;
-    json << std::fixed << std::setprecision(2);
 
+    // 6. Build JSON
+    ostringstream json;
+    json << fixed << setprecision(2);
+    
     json << "{\"metadata\":{\"filename\":\"" << escapeJson(filename) << "\"";
     json << ",\"totalRows\":" << numRows;
     json << ",\"totalColumns\":" << numColumns;
-    json << ",\"fileSizeBytes\":" << csvContent.length();
+    json << ",\"fileSizeBytes\":" << content.length();
     json << ",\"columns\":[";
 
     for (int i = 0; i < numColumns; i++) {
@@ -915,15 +496,22 @@ std::string convertToJsonOptimized(const std::string& csvContent, const std::str
         json << ",\"nullCount\":" << stats[i].nullCount;
 
         if (columnTypes[i] == DataType::INTEGER || columnTypes[i] == DataType::FLOAT) {
-            json << ",\"min\":" << stats[i].min;
-            json << ",\"max\":" << stats[i].max;
-            json << ",\"avg\":" << (stats[i].count > 0 ? stats[i].sum / stats[i].count : 0);
+            if (stats[i].count > 0) { // 방어 코드: 숫자 데이터가 하나라도 있을 때만 통계 출력
+                json << ",\"min\":"; jsonSafeDouble(json, stats[i].min);
+                json << ",\"max\":"; jsonSafeDouble(json, stats[i].max);
+                json << ",\"avg\":"; jsonSafeDouble(json, stats[i].mean);
+                json << ",\"std_dev\":"; jsonSafeDouble(json, stats[i].getStdDev());
+            }
+        } else if (columnTypes[i] == DataType::STRING) {
+            json << ",\"min_length\":" << stats[i].minLength;
+            json << ",\"max_length\":" << stats[i].maxLength;
         }
         json << "}}";
     }
 
     json << "]},\"data\":[";
 
+    // Data output
     for (int r = 0; r < numRows; r++) {
         if (r > 0) json << ",";
         json << "{";
@@ -931,19 +519,15 @@ std::string convertToJsonOptimized(const std::string& csvContent, const std::str
             if (c > 0) json << ",";
             json << "\"" << escapeJson(headers[c]) << "\":";
 
-            const std::string& val = rows[r][c];
-            if (val.empty()) {
+            const string& val = rows[r][c];
+            if (TypeChecker::isNull(val)) {
                 json << "null";
             } else if (columnTypes[c] == DataType::INTEGER || columnTypes[c] == DataType::FLOAT) {
-                try {
-                    std::stod(val);
-                    json << val;
-                } catch (...) {
-                    json << "\"" << escapeJson(val) << "\"";
-                }
+                double num = stringToDouble(val);
+                jsonSafeDouble(json, num); 
             } else if (columnTypes[c] == DataType::BOOLEAN) {
-                std::string lower = val;
-                std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+                string lower = val;
+                transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
                 if (lower == "true" || lower == "yes" || lower == "1") json << "true";
                 else if (lower == "false" || lower == "no" || lower == "0") json << "false";
                 else json << "\"" << escapeJson(val) << "\"";
@@ -958,9 +542,32 @@ std::string convertToJsonOptimized(const std::string& csvContent, const std::str
     return json.str();
 }
 
+// =================================================================================
+// Placeholder/Wrapper functions (for API compatibility)
+// =================================================================================
+
+// 💡 Reverted to 2-argument signatures for API compatibility
+string convertToJson(const string& csvContent, const string& filename) {
+    return convertToJsonOptimized(csvContent, filename);
+}
+
+string convertToJsonMetadataOnly(const string& csvContent, const string& filename) {
+    return convertToJsonOptimized(csvContent, filename);
+}
+
+string convertToJsonAuto(const string& csvContent, const string& filename) {
+    return convertToJsonOptimized(csvContent, filename);
+}
+
+// =================================================================================
+// Emscripten Bindings
+// =================================================================================
+
+// 💡 Reverted to 2-argument signatures for bindings
 EMSCRIPTEN_BINDINGS(csv_converter) {
-    function("convertToJson", &convertToJson);
-    function("convertToJsonMetadataOnly", &convertToJsonMetadataOnly);
-    function("convertToJsonAuto", &convertToJsonAuto);
-    function("convertToJsonOptimized", &convertToJsonOptimized);
+    // 'function'이 std::function과 충돌하므로 emscripten::function으로 명시합니다.
+    emscripten::function("convertToJson", &convertToJson);
+    emscripten::function("convertToJsonMetadataOnly", &convertToJsonMetadataOnly);
+    emscripten::function("convertToJsonAuto", &convertToJsonAuto);
+    emscripten::function("convertToJsonOptimized", &convertToJsonOptimized);
 }
