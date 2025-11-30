@@ -1,5 +1,6 @@
 import DBManager from "./DBManager.js";
 
+const spinnerContainer = document.getElementById("spinner-container");
 const sectionIds = ["stats-section", "visualize-section", "json-section"];
 
 function showSection(id) {
@@ -108,12 +109,17 @@ if (btnDeleteFile) {
 
 // Load and convert CSV file from IndexedDB
 async function loadAndConvertCsv() {
+  console.log("Starting CSV conversion process...");
+  spinnerContainer.classList.remove("hidden");
   try {
+    console.time("CSV Conversion");
     // Get filename from sessionStorage
     uploadedFileName = sessionStorage.getItem("uploadedFileName") || "data";
 
     // Load file from IndexedDB using DBManager
+    console.log("Fetching file from IndexedDB...");
     const file = await dbManager.getFile("uploaded-file");
+    console.log("File fetched successfully from IndexedDB.");
 
     if (!file) {
       throw new Error("업로드된 파일을 찾을 수 없습니다.");
@@ -126,6 +132,7 @@ async function loadAndConvertCsv() {
     const arrayBuffer = await file.arrayBuffer();
     const uint8Array = new Uint8Array(arrayBuffer);
 
+    console.log("Starting encoding detection...");
     // Auto-detect encoding (UTF-8, UTF-16, EUC-KR, CP949)
     let text;
 
@@ -135,39 +142,47 @@ async function loadAndConvertCsv() {
         uint8Array[1] === 0xBB &&
         uint8Array[2] === 0xBF) {
       // UTF-8 with BOM
+      console.log("Detected UTF-8 with BOM.");
       const decoder = new TextDecoder('utf-8');
       text = decoder.decode(uint8Array.slice(3));
     } else if (uint8Array.length >= 2 &&
                uint8Array[0] === 0xFF &&
                uint8Array[1] === 0xFE) {
       // UTF-16 LE
+      console.log("Detected UTF-16 LE.");
       const decoder = new TextDecoder('utf-16le');
       text = decoder.decode(uint8Array.slice(2));
     } else if (uint8Array.length >= 2 &&
                uint8Array[0] === 0xFE &&
                uint8Array[1] === 0xFF) {
       // UTF-16 BE
+      console.log("Detected UTF-16 BE.");
       const decoder = new TextDecoder('utf-16be');
       text = decoder.decode(uint8Array.slice(2));
     } else {
       // Try UTF-8 first (most common)
       try {
+        console.log("Attempting to decode with UTF-8...");
         const decoder = new TextDecoder('utf-8', { fatal: true });
         text = decoder.decode(uint8Array);
+        console.log("Successfully decoded with UTF-8.");
       } catch (e) {
+        console.log("UTF-8 decoding failed. Trying Korean encodings...");
         // If UTF-8 fails, try common Korean encodings
         const encodings = ['euc-kr', 'cp949', 'windows-949'];
         let decoded = false;
 
         for (const encoding of encodings) {
           try {
+            console.log(`Attempting to decode with ${encoding}...`);
             // fatal: true 옵션으로 엄격하게 디코딩을 시도합니다.
             const decoder = new TextDecoder(encoding, { fatal: true });
             text = decoder.decode(uint8Array);
             decoded = true;
-            console.log(`Decoded with ${encoding}`);
+            console.log(`Successfully decoded with ${encoding}`);
             break;
           } catch (e) {
+            console.log(`Decoding with ${encoding} failed.`);
             // 디코딩 실패 시 다음 인코딩으로 넘어갑니다.
             continue;
           }
@@ -178,21 +193,17 @@ async function loadAndConvertCsv() {
         }
       }
     }
+    console.log("Encoding detection and decoding complete.");
 
     // Wait for WASM module to be ready
     if (typeof Module === 'undefined' || !Module.convertToJsonAuto) {
       console.log('Waiting for WASM module to initialize...');
 
       await new Promise((resolve, reject) => {
-        const timeout = setTimeout(() => {
-          reject(new Error('WASM 모듈 로딩 시간 초과 (10초)'));
-        }, 10000);
-
         // Save original callback if it exists
         const originalCallback = Module && Module.onRuntimeInitialized;
 
         const initCallback = () => {
-          clearTimeout(timeout);
           console.log("WASM module ready");
           if (originalCallback && typeof originalCallback === "function") {
             originalCallback();
@@ -213,8 +224,13 @@ async function loadAndConvertCsv() {
     }
 
     // Convert CSV to JSON using WASM
+    console.log("Calling WASM function 'convertToJsonAuto'...");
     const jsonString = Module.convertToJsonAuto(text, uploadedFileName);
+    console.log("WASM function execution finished.");
+
+    console.log("Parsing JSON string...");
     convertedJsonData = JSON.parse(jsonString);
+    console.log("JSON parsed successfully.");
 
     // Render JSON
     renderJson(convertedJsonData);
@@ -225,6 +241,7 @@ async function loadAndConvertCsv() {
 
     // Initialize stats section
     initializeStatsSection();
+    console.log("Initialization of UI sections complete.");
   } catch (err) {
     console.error("CSV 변환 실패:", err);
     if (beautifiedEl) {
@@ -236,6 +253,9 @@ async function loadAndConvertCsv() {
       alert("분석할 파일이 없습니다. 먼저 파일을 업로드해주세요.");
       window.location.href = "upload.html";
     }
+  } finally {
+    spinnerContainer.remove();;
+    console.timeEnd("CSV Conversion");
   }
 }
 
