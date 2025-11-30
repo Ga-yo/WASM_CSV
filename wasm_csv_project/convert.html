@@ -100,84 +100,64 @@
           <div class="p-4 border-b border-neutral-200">
             <div class="flex items-center justify-between mb-4">
               <div class="text-lg font-semibold text-neutral-900">
-                요약 통계
+                데이터 테이블
+              </div>
+              <div class="flex items-center gap-3">
+                <div class="text-sm text-neutral-600">
+                  총 <span id="total-rows">0</span>개 행
+                </div>
+                <button id="btn-reset-table" class="btn-secondary">
+                  <i class="fa-solid fa-rotate-left mr-1" aria-hidden="true"></i>
+                  초기화
+                </button>
+                <button id="btn-download-excel" class="btn-primary">
+                  <i class="fa-solid fa-download mr-1" aria-hidden="true"></i>
+                  Excel 다운로드
+                </button>
               </div>
             </div>
-            <div class="flex items-center gap-4 text-sm">
-              <span class="text-neutral-600">타입 필터:</span>
-              <label class="flex items-center gap-1 cursor-pointer">
-                <input
-                  type="checkbox"
-                  class="type-filter"
-                  value="all"
-                  checked
-                />
-                <span>전체</span>
-              </label>
-              <label class="flex items-center gap-1 cursor-pointer">
-                <input type="checkbox" class="type-filter" value="숫자" />
-                <span>숫자</span>
-              </label>
-              <label class="flex items-center gap-1 cursor-pointer">
-                <input type="checkbox" class="type-filter" value="문자" />
-                <span>문자</span>
-              </label>
+
+            <!-- Filter Section -->
+            <div class="flex items-center gap-4 mb-4 flex-wrap">
+              <span class="text-sm font-medium text-neutral-700">요약 기능:</span>
+              <div class="flex gap-3 flex-wrap">
+                <button id="btn-filter-max" class="btn-filter">
+                  <i class="fa-solid fa-arrow-up"></i>
+                  <span>최대값</span>
+                </button>
+                <button id="btn-filter-min" class="btn-filter">
+                  <i class="fa-solid fa-arrow-down"></i>
+                  <span>최소값</span>
+                </button>
+                <button id="btn-filter-avg" class="btn-filter">
+                  <i class="fa-solid fa-calculator"></i>
+                  <span>평균</span>
+                </button>
+                <button id="btn-filter-stats" class="btn-filter">
+                  <i class="fa-solid fa-chart-bar"></i>
+                  <span>통계</span>
+                </button>
+              </div>
+              <span id="filter-instruction" class="text-xs text-neutral-500 italic hidden">
+                필터를 선택한 후 열 헤더를 클릭하세요
+              </span>
+            </div>
+
+            <!-- Stats Result Display -->
+            <div id="stats-result" class="hidden p-3 bg-blue-50 border border-blue-200 rounded-lg mb-4">
+              <div class="flex items-center justify-between">
+                <div class="text-sm">
+                  <span class="font-semibold text-blue-900" id="stats-result-text"></span>
+                </div>
+                <button id="btn-close-stats" class="text-blue-600 hover:text-blue-800">
+                  <i class="fa-solid fa-times"></i>
+                </button>
+              </div>
             </div>
           </div>
-          <div class="overflow-auto p-4">
-            <table id="stats-table" class="w-full text-sm table-sortable">
-              <thead>
-                <tr class="border-b border-neutral-200">
-                  <th data-sort="column" class="text-left p-2">
-                    컬럼
-                    <i
-                      class="fa-solid fa-sort text-neutral-400 ml-1"
-                      aria-hidden="true"
-                    ></i>
-                  </th>
-                  <th data-sort="type" class="text-left p-2">
-                    타입
-                    <i
-                      class="fa-solid fa-sort text-neutral-400 ml-1"
-                      aria-hidden="true"
-                    ></i>
-                  </th>
-                  <th data-sort="count" class="text-right p-2">
-                    개수
-                    <i
-                      class="fa-solid fa-sort text-neutral-400 ml-1"
-                      aria-hidden="true"
-                    ></i>
-                  </th>
-                  <th data-sort="unique" class="text-right p-2">
-                    고유값
-                    <i
-                      class="fa-solid fa-sort text-neutral-400 ml-1"
-                      aria-hidden="true"
-                    ></i>
-                  </th>
-                  <th data-sort="min" class="text-right p-2">
-                    최솟값
-                    <i
-                      class="fa-solid fa-sort text-neutral-400 ml-1"
-                      aria-hidden="true"
-                    ></i>
-                  </th>
-                  <th data-sort="max" class="text-right p-2">
-                    최댓값
-                    <i
-                      class="fa-solid fa-sort text-neutral-400 ml-1"
-                      aria-hidden="true"
-                    ></i>
-                  </th>
-                  <th data-sort="avg" class="text-right p-2">
-                    평균
-                    <i
-                      class="fa-solid fa-sort text-neutral-400 ml-1"
-                      aria-hidden="true"
-                    ></i>
-                  </th>
-                </tr>
+          <div class="overflow-auto p-4" style="max-height: 600px;">
+            <table id="stats-table" class="w-full text-sm border-collapse">
+              <thead id="stats-table-head" class="sticky top-0 bg-white">
               </thead>
               <tbody id="stats-table-body"></tbody>
             </table>
