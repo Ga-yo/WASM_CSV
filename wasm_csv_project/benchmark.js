@@ -291,13 +291,21 @@ class BenchmarkController {
       return;
     }
 
-    this.log('WASM 테스트 시작...', 'info');
+    this.log('='.repeat(60), 'info');
+    this.log('🚀 WASM 테스트 시작', 'info');
     this.btnTestWasm.classList.add('disabled');
+
+    const timestamps = {};
+    timestamps.testStart = new Date();
+    this.log(`[시작 시간] ${timestamps.testStart.toLocaleTimeString()}.${timestamps.testStart.getMilliseconds()}`, 'info');
 
     try {
       // Read file
+      const fileReadStart = performance.now();
       const text = await this.readFileAsText(this.selectedFile);
-      this.log(`파일 읽기 완료 (${(text.length / 1024 / 1024).toFixed(2)} MB)`, 'success');
+      const fileReadEnd = performance.now();
+      timestamps.fileReadTime = (fileReadEnd - fileReadStart) / 1000;
+      this.log(`파일 읽기 완료 (${(text.length / 1024 / 1024).toFixed(2)} MB) - ${timestamps.fileReadTime.toFixed(3)}초`, 'success');
 
       // Wait for WASM module
       this.log('WASM 모듈 대기 중...', 'info');
@@ -344,26 +352,71 @@ class BenchmarkController {
         throw new Error('WASM module not ready');
       }
 
+      // Conversion start
+      timestamps.conversionStart = new Date();
+      this.log(`[변환 시작] ${timestamps.conversionStart.toLocaleTimeString()}.${timestamps.conversionStart.getMilliseconds()}`, 'info');
+
       const startTime = performance.now();
+
+      // Count rows (for detailed metrics)
+      const rowCountStart = performance.now();
+      const lines = text.split('\n');
+      const rowCount = lines.length - 1; // Excluding header
+      const rowCountEnd = performance.now();
+      timestamps.rowCountTime = (rowCountEnd - rowCountStart) / 1000;
+
       jsonString = Module.convertToJsonOptimized ?
         Module.convertToJsonOptimized(text, this.selectedFile.name) :
         Module.convertToJsonAuto(text, this.selectedFile.name);
       const endTime = performance.now();
+
+      timestamps.conversionEnd = new Date();
+      this.log(`[변환 종료] ${timestamps.conversionEnd.toLocaleTimeString()}.${timestamps.conversionEnd.getMilliseconds()}`, 'success');
+
+      const parseStart = performance.now();
       const result = JSON.parse(jsonString);
+      const parseEnd = performance.now();
+      timestamps.jsonParseTime = (parseEnd - parseStart) / 1000;
 
       const duration = (endTime - startTime) / 1000;
+      timestamps.totalConversionTime = duration;
+
+      timestamps.testEnd = new Date();
+      this.log(`[종료 시간] ${timestamps.testEnd.toLocaleTimeString()}.${timestamps.testEnd.getMilliseconds()}`, 'success');
+      this.log(`[총 소요 시간] ${duration.toFixed(3)}초`, 'success');
+
       this.wasmResult = {
         duration: duration,
         fileSize: this.selectedFile.size,
-        result: result
+        result: result,
+        timestamps: timestamps,
+        rowCount: rowCount,
+        success: true
       };
 
-      this.log(`WASM 변환 완료: ${duration.toFixed(3)}초`, 'success');
+      this.log(`✅ WASM 변환 완료: ${duration.toFixed(3)}초`, 'success');
+      this.log('='.repeat(60), 'info');
       this.displayWasmResult();
       this.hideProgress();
 
     } catch (err) {
-      this.log(`WASM 테스트 실패: ${err.message}`, 'error');
+      this.log(`❌ WASM 테스트 실패: ${err.message}`, 'error');
+      this.log('='.repeat(60), 'info');
+
+      this.wasmResult = {
+        duration: 0,
+        fileSize: this.selectedFile.size,
+        result: null,
+        timestamps: {},
+        rowCount: 0,
+        success: false,
+        error: {
+          message: err.message,
+          name: err.name
+        }
+      };
+
+      this.displayWasmResult();
       this.hideProgress();
     } finally {
       this.btnTestWasm.classList.remove('disabled');
@@ -376,36 +429,108 @@ class BenchmarkController {
       return;
     }
 
-    this.log('JavaScript 테스트 시작...', 'info');
+    this.log('='.repeat(60), 'info');
+    this.log('🚀 JavaScript 테스트 시작', 'info');
     this.btnTestJs.classList.add('disabled');
+
+    const timestamps = {};
+    timestamps.testStart = new Date();
+    this.log(`[시작 시간] ${timestamps.testStart.toLocaleTimeString()}.${timestamps.testStart.getMilliseconds()}`, 'info');
 
     try {
       // Read file
+      const fileReadStart = performance.now();
       const text = await this.readFileAsText(this.selectedFile);
-      this.log(`파일 읽기 완료 (${(text.length / 1024 / 1024).toFixed(2)} MB)`, 'success');
+      const fileReadEnd = performance.now();
+      timestamps.fileReadTime = (fileReadEnd - fileReadStart) / 1000;
+      this.log(`파일 읽기 완료 (${(text.length / 1024 / 1024).toFixed(2)} MB) - ${timestamps.fileReadTime.toFixed(3)}초`, 'success');
 
       this.showProgress('JavaScript 변환 중...', 50, '처리 중...');
 
       // Run conversion (use setTimeout to allow UI update)
       await new Promise(resolve => setTimeout(resolve, 100));
 
+      // Conversion start
+      timestamps.conversionStart = new Date();
+      this.log(`[변환 시작] ${timestamps.conversionStart.toLocaleTimeString()}.${timestamps.conversionStart.getMilliseconds()}`, 'info');
+
       const startTime = performance.now();
+
+      // Count rows (for detailed metrics)
+      const rowCountStart = performance.now();
+      const lines = text.split('\n');
+      const rowCount = lines.length - 1; // Excluding header
+      const rowCountEnd = performance.now();
+      timestamps.rowCountTime = (rowCountEnd - rowCountStart) / 1000;
+
       const result = this.jsConverter.convertToJson(text, this.selectedFile.name);
       const endTime = performance.now();
 
+      timestamps.conversionEnd = new Date();
+      this.log(`[변환 종료] ${timestamps.conversionEnd.toLocaleTimeString()}.${timestamps.conversionEnd.getMilliseconds()}`, 'success');
+
       const duration = (endTime - startTime) / 1000;
+      timestamps.totalConversionTime = duration;
+
+      timestamps.testEnd = new Date();
+      this.log(`[종료 시간] ${timestamps.testEnd.toLocaleTimeString()}.${timestamps.testEnd.getMilliseconds()}`, 'success');
+      this.log(`[총 소요 시간] ${duration.toFixed(3)}초`, 'success');
+
       this.jsResult = {
         duration: duration,
         fileSize: this.selectedFile.size,
-        result: result
+        result: result,
+        timestamps: timestamps,
+        rowCount: rowCount,
+        success: true
       };
 
-      this.log(`JavaScript 변환 완료: ${duration.toFixed(3)}초`, 'success');
+      this.log(`✅ JavaScript 변환 완료: ${duration.toFixed(3)}초`, 'success');
+      this.log('='.repeat(60), 'info');
       this.displayJsResult();
       this.hideProgress();
 
     } catch (err) {
-      this.log(`JavaScript 테스트 실패: ${err.message}`, 'error');
+      this.log(`❌ JavaScript 테스트 실패: ${err.message}`, 'error');
+
+      // Store error information
+      this.jsResult = {
+        duration: 0,
+        fileSize: this.selectedFile.size,
+        result: null,
+        timestamps: timestamps,
+        rowCount: 0,
+        success: false,
+        error: {
+          message: err.message,
+          name: err.name,
+          stack: err.stack
+        }
+      };
+
+      // Determine error type
+      let errorType = '알 수 없는 오류';
+      let errorReason = '';
+
+      if (err.message.includes('Maximum call stack size exceeded')) {
+        errorType = '스택 오버플로우 (Stack Overflow)';
+        errorReason = 'JavaScript의 재귀 호출 깊이 제한으로 인한 실패. 대용량 CSV 파일 처리 시 발생하는 일반적인 문제입니다.';
+      } else if (err.message.includes('out of memory') || err.message.includes('allocation failed')) {
+        errorType = '메모리 부족 (Out of Memory)';
+        errorReason = 'JavaScript 힙 메모리 한계를 초과했습니다. 브라우저의 메모리 제약으로 인한 실패입니다.';
+      } else if (err.message.includes('timeout')) {
+        errorType = '타임아웃 (Timeout)';
+        errorReason = '처리 시간이 너무 오래 걸려 타임아웃되었습니다.';
+      }
+
+      this.jsResult.error.type = errorType;
+      this.jsResult.error.reason = errorReason;
+
+      this.log(`⚠️ 오류 유형: ${errorType}`, 'error');
+      this.log(`⚠️ 원인: ${errorReason}`, 'error');
+      this.log('='.repeat(60), 'info');
+
+      this.displayJsResult();
       this.hideProgress();
     } finally {
       this.btnTestJs.classList.remove('disabled');
@@ -436,42 +561,295 @@ class BenchmarkController {
   displayJsResult() {
     const result = this.jsResult;
     document.getElementById('js-result').style.display = 'block';
-    document.getElementById('js-time').textContent = `${result.duration.toFixed(3)}초`;
-    document.getElementById('js-file-size').textContent = `${(result.fileSize / 1024 / 1024).toFixed(2)} MB`;
-    document.getElementById('js-throughput').textContent = `${(result.fileSize / 1024 / 1024 / result.duration).toFixed(2)} MB/s`;
-    document.getElementById('js-rows').textContent = (result.result.metadata?.totalRows || 0).toLocaleString();
-    document.getElementById('js-cols').textContent = result.result.metadata?.totalColumns || 0;
+
+    if (result.success) {
+      document.getElementById('js-time').textContent = `${result.duration.toFixed(3)}초`;
+      document.getElementById('js-file-size').textContent = `${(result.fileSize / 1024 / 1024).toFixed(2)} MB`;
+      document.getElementById('js-throughput').textContent = `${(result.fileSize / 1024 / 1024 / result.duration).toFixed(2)} MB/s`;
+      document.getElementById('js-rows').textContent = (result.result.metadata?.totalRows || 0).toLocaleString();
+      document.getElementById('js-cols').textContent = result.result.metadata?.totalColumns || 0;
+    } else {
+      document.getElementById('js-time').textContent = `실패`;
+      document.getElementById('js-time').style.color = '#dc2626';
+      document.getElementById('js-file-size').textContent = `${(result.fileSize / 1024 / 1024).toFixed(2)} MB`;
+      document.getElementById('js-throughput').textContent = `처리 불가`;
+      document.getElementById('js-rows').textContent = `처리 실패`;
+      document.getElementById('js-cols').textContent = `-`;
+    }
+
     this.resultsSection.style.display = 'block';
   }
 
   displayComparison() {
     if (!this.wasmResult || !this.jsResult) return;
 
-    const speedup = (this.jsResult.duration / this.wasmResult.duration).toFixed(2);
-    const wasmHeight = 100;
-    const jsHeight = (this.jsResult.duration / this.wasmResult.duration) * 100;
+    const wasmSuccess = this.wasmResult.success;
+    const jsSuccess = this.jsResult.success;
 
     document.getElementById('comparison-result').style.display = 'block';
-    document.getElementById('speedup-badge').textContent = `WASM이 ${speedup}x 더 빠름`;
 
-    const chartHtml = `
-      <div class="chart-bar">
-        <div class="chart-bar-fill wasm" style="height: ${wasmHeight}px;">
-          ${this.wasmResult.duration.toFixed(3)}초
-        </div>
-        <div class="chart-bar-label">WASM</div>
-      </div>
-      <div class="chart-bar">
-        <div class="chart-bar-fill js" style="height: ${jsHeight}px;">
-          ${this.jsResult.duration.toFixed(3)}초
-        </div>
-        <div class="chart-bar-label">JavaScript</div>
-      </div>
-    `;
+    // Handle different success/failure scenarios
+    let chartHtml = '';
+    let speedupText = '';
 
+    if (wasmSuccess && jsSuccess) {
+      // Both succeeded
+      const speedup = (this.jsResult.duration / this.wasmResult.duration).toFixed(2);
+      const wasmHeight = 100;
+      const jsHeight = (this.jsResult.duration / this.wasmResult.duration) * 100;
+
+      speedupText = `WASM이 ${speedup}x 더 빠름`;
+
+      chartHtml = `
+        <div class="chart-bar">
+          <div class="chart-bar-fill wasm" style="height: ${wasmHeight}px;">
+            ${this.wasmResult.duration.toFixed(3)}초
+          </div>
+          <div class="chart-bar-label">WASM</div>
+        </div>
+        <div class="chart-bar">
+          <div class="chart-bar-fill js" style="height: ${jsHeight}px;">
+            ${this.jsResult.duration.toFixed(3)}초
+          </div>
+          <div class="chart-bar-label">JavaScript</div>
+        </div>
+      `;
+    } else if (wasmSuccess && !jsSuccess) {
+      // WASM succeeded, JS failed
+      speedupText = 'WASM만 성공 - 대용량 처리 가능';
+
+      chartHtml = `
+        <div class="chart-bar">
+          <div class="chart-bar-fill wasm" style="height: 100px;">
+            ✓ ${this.wasmResult.duration.toFixed(3)}초
+          </div>
+          <div class="chart-bar-label">WASM ✅</div>
+        </div>
+        <div class="chart-bar">
+          <div class="chart-bar-fill" style="height: 50px; background: linear-gradient(180deg, #ef4444, #dc2626);">
+            ✗ 실패
+          </div>
+          <div class="chart-bar-label">JavaScript ❌</div>
+        </div>
+      `;
+    } else if (!wasmSuccess && jsSuccess) {
+      // WASM failed, JS succeeded
+      speedupText = 'JavaScript만 성공';
+
+      chartHtml = `
+        <div class="chart-bar">
+          <div class="chart-bar-fill" style="height: 50px; background: linear-gradient(180deg, #ef4444, #dc2626);">
+            ✗ 실패
+          </div>
+          <div class="chart-bar-label">WASM ❌</div>
+        </div>
+        <div class="chart-bar">
+          <div class="chart-bar-fill js" style="height: 100px;">
+            ✓ ${this.jsResult.duration.toFixed(3)}초
+          </div>
+          <div class="chart-bar-label">JavaScript ✅</div>
+        </div>
+      `;
+    } else {
+      // Both failed
+      speedupText = '둘 다 실패';
+
+      chartHtml = `
+        <div class="chart-bar">
+          <div class="chart-bar-fill" style="height: 50px; background: linear-gradient(180deg, #ef4444, #dc2626);">
+            ✗ 실패
+          </div>
+          <div class="chart-bar-label">WASM ❌</div>
+        </div>
+        <div class="chart-bar">
+          <div class="chart-bar-fill" style="height: 50px; background: linear-gradient(180deg, #ef4444, #dc2626);">
+            ✗ 실패
+          </div>
+          <div class="chart-bar-label">JavaScript ❌</div>
+        </div>
+      `;
+    }
+
+    document.getElementById('speedup-badge').textContent = speedupText;
     document.getElementById('comparison-chart').innerHTML = chartHtml;
 
-    this.log(`성능 비교: WASM이 JavaScript보다 ${speedup}x 빠름`, 'success');
+    // Create detailed latency comparison table
+    let detailTableHtml = '';
+
+    if (wasmSuccess && jsSuccess) {
+      // Both succeeded - show full comparison
+      const speedup = (this.jsResult.duration / this.wasmResult.duration).toFixed(2);
+
+      detailTableHtml = `
+        <div style="margin-top: 24px;">
+          <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 12px; color: #1f2937;">
+            📊 상세 레이턴시 측정 결과
+          </h3>
+          <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+            <thead>
+              <tr style="background: #f3f4f6; border-bottom: 2px solid #e5e7eb;">
+                <th style="padding: 12px; text-align: left; font-weight: 600; color: #374151;">측정 항목</th>
+                <th style="padding: 12px; text-align: right; font-weight: 600; color: #059669;">WASM</th>
+                <th style="padding: 12px; text-align: right; font-weight: 600; color: #dc2626;">JavaScript</th>
+                <th style="padding: 12px; text-align: right; font-weight: 600; color: #7c3aed;">성능 차이</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr style="border-bottom: 1px solid #e5e7eb;">
+                <td style="padding: 12px; color: #4b5563;">파일 읽기 시간</td>
+                <td style="padding: 12px; text-align: right; color: #059669;">${this.wasmResult.timestamps.fileReadTime.toFixed(3)}초</td>
+                <td style="padding: 12px; text-align: right; color: #dc2626;">${this.jsResult.timestamps.fileReadTime.toFixed(3)}초</td>
+                <td style="padding: 12px; text-align: right; color: #7c3aed;">${(this.jsResult.timestamps.fileReadTime / this.wasmResult.timestamps.fileReadTime).toFixed(2)}x</td>
+              </tr>
+              <tr style="border-bottom: 1px solid #e5e7eb; background: #fafafa;">
+                <td style="padding: 12px; color: #4b5563;">행 개수 확인 시간</td>
+                <td style="padding: 12px; text-align: right; color: #059669;">${this.wasmResult.timestamps.rowCountTime.toFixed(3)}초</td>
+                <td style="padding: 12px; text-align: right; color: #dc2626;">${this.jsResult.timestamps.rowCountTime.toFixed(3)}초</td>
+                <td style="padding: 12px; text-align: right; color: #7c3aed;">${(this.jsResult.timestamps.rowCountTime / this.wasmResult.timestamps.rowCountTime).toFixed(2)}x</td>
+              </tr>
+              <tr style="border-bottom: 1px solid #e5e7eb;">
+                <td style="padding: 12px; color: #4b5563;">데이터 포맷 변환 시간</td>
+                <td style="padding: 12px; text-align: right; color: #059669; font-weight: 600;">${this.wasmResult.timestamps.totalConversionTime.toFixed(3)}초</td>
+                <td style="padding: 12px; text-align: right; color: #dc2626; font-weight: 600;">${this.jsResult.timestamps.totalConversionTime.toFixed(3)}초</td>
+                <td style="padding: 12px; text-align: right; color: #7c3aed; font-weight: 600;">${speedup}x</td>
+              </tr>
+              ${this.wasmResult.timestamps.jsonParseTime ? `
+              <tr style="border-bottom: 1px solid #e5e7eb; background: #fafafa;">
+                <td style="padding: 12px; color: #4b5563;">JSON 파싱 시간 (WASM만 해당)</td>
+                <td style="padding: 12px; text-align: right; color: #059669;">${this.wasmResult.timestamps.jsonParseTime.toFixed(3)}초</td>
+                <td style="padding: 12px; text-align: right; color: #9ca3af;">N/A</td>
+                <td style="padding: 12px; text-align: right; color: #9ca3af;">-</td>
+              </tr>
+              ` : ''}
+              <tr style="border-bottom: 1px solid #e5e7eb;">
+                <td style="padding: 12px; color: #4b5563;">처리된 행 개수</td>
+                <td style="padding: 12px; text-align: right; color: #059669;">${this.wasmResult.rowCount.toLocaleString()}개</td>
+                <td style="padding: 12px; text-align: right; color: #dc2626;">${this.jsResult.rowCount.toLocaleString()}개</td>
+                <td style="padding: 12px; text-align: right; color: #7c3aed;">동일</td>
+              </tr>
+              <tr style="border-bottom: 1px solid #e5e7eb; background: #fafafa;">
+                <td style="padding: 12px; color: #4b5563;">행당 처리 시간</td>
+                <td style="padding: 12px; text-align: right; color: #059669;">${(this.wasmResult.timestamps.totalConversionTime / this.wasmResult.rowCount * 1000).toFixed(3)}ms</td>
+                <td style="padding: 12px; text-align: right; color: #dc2626;">${(this.jsResult.timestamps.totalConversionTime / this.jsResult.rowCount * 1000).toFixed(3)}ms</td>
+                <td style="padding: 12px; text-align: right; color: #7c3aed;">${((this.jsResult.timestamps.totalConversionTime / this.jsResult.rowCount) / (this.wasmResult.timestamps.totalConversionTime / this.wasmResult.rowCount)).toFixed(2)}x</td>
+              </tr>
+              <tr style="background: #eff6ff; border-bottom: 2px solid #3b82f6;">
+                <td style="padding: 12px; color: #1e3a8a; font-weight: 700;">총 실행 시간</td>
+                <td style="padding: 12px; text-align: right; color: #059669; font-weight: 700;">${this.wasmResult.duration.toFixed(3)}초</td>
+                <td style="padding: 12px; text-align: right; color: #dc2626; font-weight: 700;">${this.jsResult.duration.toFixed(3)}초</td>
+                <td style="padding: 12px; text-align: right; color: #7c3aed; font-weight: 700;">${speedup}x 빠름</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      `;
+    } else if (wasmSuccess && !jsSuccess) {
+      // WASM succeeded, JS failed - show error details
+      const fileSizeMB = (this.wasmResult.fileSize / 1024 / 1024).toFixed(2);
+
+      detailTableHtml = `
+        <div style="margin-top: 24px;">
+          <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 12px; color: #1f2937;">
+            📊 상세 레이턴시 측정 결과
+          </h3>
+
+          <!-- WASM Success Info -->
+          <div style="background: #dcfce7; border-left: 4px solid #059669; padding: 16px; border-radius: 8px; margin-bottom: 16px;">
+            <h4 style="color: #059669; font-weight: 700; margin-bottom: 8px;">✅ WASM 성공</h4>
+            <table style="width: 100%; font-size: 14px;">
+              <tr>
+                <td style="padding: 6px 0; color: #4b5563; width: 200px;">파일 크기</td>
+                <td style="padding: 6px 0; color: #059669; font-weight: 600;">${fileSizeMB} MB</td>
+              </tr>
+              <tr>
+                <td style="padding: 6px 0; color: #4b5563;">처리된 행 개수</td>
+                <td style="padding: 6px 0; color: #059669; font-weight: 600;">${this.wasmResult.rowCount.toLocaleString()}개</td>
+              </tr>
+              <tr>
+                <td style="padding: 6px 0; color: #4b5563;">총 변환 시간</td>
+                <td style="padding: 6px 0; color: #059669; font-weight: 600;">${this.wasmResult.duration.toFixed(3)}초</td>
+              </tr>
+              <tr>
+                <td style="padding: 6px 0; color: #4b5563;">행당 처리 시간</td>
+                <td style="padding: 6px 0; color: #059669; font-weight: 600;">${(this.wasmResult.duration / this.wasmResult.rowCount * 1000).toFixed(3)}ms</td>
+              </tr>
+              <tr>
+                <td style="padding: 6px 0; color: #4b5563;">처리 속도</td>
+                <td style="padding: 6px 0; color: #059669; font-weight: 600;">${(this.wasmResult.fileSize / 1024 / 1024 / this.wasmResult.duration).toFixed(2)} MB/s</td>
+              </tr>
+            </table>
+          </div>
+
+          <!-- JavaScript Error Info -->
+          <div style="background: #fee2e2; border-left: 4px solid #dc2626; padding: 16px; border-radius: 8px;">
+            <h4 style="color: #dc2626; font-weight: 700; margin-bottom: 8px;">❌ JavaScript 실패</h4>
+            <table style="width: 100%; font-size: 14px;">
+              <tr>
+                <td style="padding: 6px 0; color: #4b5563; width: 200px;">오류 유형</td>
+                <td style="padding: 6px 0; color: #dc2626; font-weight: 600;">${this.jsResult.error.type}</td>
+              </tr>
+              <tr>
+                <td style="padding: 6px 0; color: #4b5563; vertical-align: top;">오류 원인</td>
+                <td style="padding: 6px 0; color: #dc2626;">${this.jsResult.error.reason}</td>
+              </tr>
+              <tr>
+                <td style="padding: 6px 0; color: #4b5563;">오류 메시지</td>
+                <td style="padding: 6px 0; color: #991b1b; font-family: monospace; font-size: 12px;">${this.jsResult.error.message}</td>
+              </tr>
+            </table>
+          </div>
+
+          <!-- Key Insights -->
+          <div style="background: #fef3c7; border-left: 4px solid #f59e0b; padding: 16px; border-radius: 8px; margin-top: 16px;">
+            <h4 style="color: #b45309; font-weight: 700; margin-bottom: 8px;">💡 핵심 인사이트</h4>
+            <ul style="margin: 0; padding-left: 20px; color: #78350f; line-height: 1.8;">
+              <li><strong>대용량 파일 처리:</strong> WASM은 ${fileSizeMB}MB의 대용량 CSV 파일을 성공적으로 처리했지만, JavaScript는 실패했습니다.</li>
+              <li><strong>메모리 효율성:</strong> WASM은 네이티브 메모리 관리를 통해 JavaScript의 힙 메모리 제약을 우회합니다.</li>
+              <li><strong>스택 안정성:</strong> JavaScript는 재귀 호출 깊이 제한으로 인해 대용량 데이터 처리 시 스택 오버플로우가 발생할 수 있습니다.</li>
+              <li><strong>프로덕션 권장사항:</strong> ${fileSizeMB}MB 이상의 대용량 CSV 파일 처리에는 WASM 사용을 강력히 권장합니다.</li>
+            </ul>
+          </div>
+        </div>
+      `;
+    } else if (!wasmSuccess && jsSuccess) {
+      // WASM failed, JS succeeded
+      detailTableHtml = `
+        <div style="margin-top: 24px;">
+          <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 12px; color: #1f2937;">
+            📊 상세 레이턴시 측정 결과
+          </h3>
+          <div style="background: #fee2e2; border-left: 4px solid #dc2626; padding: 16px; border-radius: 8px;">
+            <h4 style="color: #dc2626; font-weight: 700;">WASM 실패, JavaScript 성공</h4>
+            <p style="color: #991b1b; margin-top: 8px;">WASM: ${this.wasmResult.error.message}</p>
+            <p style="color: #059669; margin-top: 8px;">JavaScript는 ${this.jsResult.duration.toFixed(3)}초에 성공적으로 완료되었습니다.</p>
+          </div>
+        </div>
+      `;
+    } else {
+      // Both failed
+      detailTableHtml = `
+        <div style="margin-top: 24px;">
+          <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 12px; color: #1f2937;">
+            📊 상세 레이턴시 측정 결과
+          </h3>
+          <div style="background: #fee2e2; border-left: 4px solid #dc2626; padding: 16px; border-radius: 8px;">
+            <h4 style="color: #dc2626; font-weight: 700;">둘 다 실패</h4>
+            <p style="color: #991b1b; margin-top: 8px;">WASM: ${this.wasmResult.error?.message || '알 수 없는 오류'}</p>
+            <p style="color: #991b1b; margin-top: 8px;">JavaScript: ${this.jsResult.error?.message || '알 수 없는 오류'}</p>
+          </div>
+        </div>
+      `;
+    }
+
+    document.getElementById('comparison-chart').innerHTML = chartHtml + detailTableHtml;
+
+    this.log('📊 상세 성능 비교 완료', 'success');
+    if (wasmSuccess && jsSuccess) {
+      const speedup = (this.jsResult.duration / this.wasmResult.duration).toFixed(2);
+      this.log(`성능 비교: WASM이 JavaScript보다 ${speedup}x 빠름`, 'success');
+    } else if (wasmSuccess && !jsSuccess) {
+      this.log(`성능 비교: WASM만 성공 - JavaScript는 ${this.jsResult.error.type}로 실패`, 'success');
+    }
   }
 
   clearResults() {
