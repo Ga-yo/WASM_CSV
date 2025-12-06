@@ -26,6 +26,7 @@ if (btnJsonMain)
 // Global variable to store converted JSON data
 let convertedJsonData = null;
 let uploadedFileName = "";
+let originalCsvContent = null; // Store original CSV for direct Excel conversion
 let currentSortColumn = null;
 let currentSortDirection = null; // 'asc' or 'desc'
 let originalDataOrder = null; // Store original order for reset
@@ -289,6 +290,10 @@ async function loadAndConvertCsv() {
     } else {
       console.log('WASM module already loaded');
     }
+
+    // Store original CSV content for direct Excel conversion
+    originalCsvContent = text;
+    console.log("Original CSV content stored for Excel conversion.");
 
     // Convert CSV to JSON using WASM
     console.log("Calling WASM function 'convertToJsonAuto'...");
@@ -708,13 +713,68 @@ function applyFilterToColumn(columnName) {
   showStatsResult(resultText);
 }
 
-function downloadAsExcel() {
-  if (
-    !convertedJsonData ||
-    !convertedJsonData.data ||
-    convertedJsonData.data.length === 0
-  ) {
-    alert("다운로드할 데이터가 없습니다.");
+// Helper function to parse file range input (e.g., "1-40", "1,5,10", "1-10,15,20-25")
+function parseFileRange(input, maxFiles) {
+  // Empty or "all" means all files
+  if (!input || input.toLowerCase() === 'all') {
+    return Array.from({ length: maxFiles }, (_, i) => i + 1);
+  }
+
+  const selectedSet = new Set();
+
+  // Split by comma
+  const parts = input.split(',');
+
+  for (const part of parts) {
+    const trimmed = part.trim();
+
+    if (!trimmed) continue;
+
+    // Check if it's a range (e.g., "1-40")
+    if (trimmed.includes('-')) {
+      const rangeParts = trimmed.split('-');
+      if (rangeParts.length !== 2) {
+        throw new Error(`잘못된 범위 형식: "${trimmed}"`);
+      }
+
+      const start = parseInt(rangeParts[0].trim());
+      const end = parseInt(rangeParts[1].trim());
+
+      if (isNaN(start) || isNaN(end)) {
+        throw new Error(`숫자가 아닌 값: "${trimmed}"`);
+      }
+
+      if (start < 1 || end > maxFiles || start > end) {
+        throw new Error(`범위 오류: "${trimmed}" (1-${maxFiles} 범위 내에서 입력하세요)`);
+      }
+
+      for (let i = start; i <= end; i++) {
+        selectedSet.add(i);
+      }
+    } else {
+      // Single number
+      const num = parseInt(trimmed);
+
+      if (isNaN(num)) {
+        throw new Error(`숫자가 아닌 값: "${trimmed}"`);
+      }
+
+      if (num < 1 || num > maxFiles) {
+        throw new Error(`범위 오류: ${num} (1-${maxFiles} 범위 내에서 입력하세요)`);
+      }
+
+      selectedSet.add(num);
+    }
+  }
+
+  // Convert Set to sorted array
+  return Array.from(selectedSet).sort((a, b) => a - b);
+}
+
+async function downloadAsExcel() {
+  // Check if original CSV content is available
+  if (!originalCsvContent) {
+    alert("원본 CSV 데이터를 찾을 수 없습니다. 파일을 다시 업로드해주세요.");
     return;
   }
 
@@ -725,30 +785,206 @@ function downloadAsExcel() {
       return;
     }
 
-    // Create a new workbook
-    const wb = XLSX.utils.book_new();
+    console.log("Excel 변환 시작 - 원본 CSV 직접 사용");
 
-    // Convert JSON data to worksheet
-    // XLSX.utils.json_to_sheet will automatically use object keys as headers
-    const ws = XLSX.utils.json_to_sheet(convertedJsonData.data);
+    // Split CSV into lines
+    const lines = originalCsvContent.split(/\r?\n/).filter(line => line.trim());
+    const totalLines = lines.length;
 
-    // Set column widths for better readability
-    const columns = Object.keys(convertedJsonData.data[0]);
-    const wscols = columns.map(() => ({ wch: 15 })); // 15 characters wide
-    ws["!cols"] = wscols;
+    if (totalLines === 0) {
+      alert("CSV 파일이 비어있습니다.");
+      return;
+    }
 
-    // Add worksheet to workbook
-    XLSX.utils.book_append_sheet(wb, ws, "Data");
+    // Split into multiple Excel files (10,000 rows per file for stability)
+    const ROWS_PER_FILE = 10000;
+    const headerLine = lines[0];
+    const dataLines = lines.slice(1);
+    const numFiles = Math.ceil(dataLines.length / ROWS_PER_FILE);
 
-    // Generate filename from original file name
-    const originalFilename =
-      uploadedFileName.replace(/\.(csv|CSV)$/, "") || "data";
-    const excelFilename = `${originalFilename}.xlsx`;
+    console.log(`총 ${dataLines.length.toLocaleString()}행을 ${numFiles}개의 Excel 파일로 분할합니다...`);
 
-    // Write and download the file
-    XLSX.writeFile(wb, excelFilename);
+    // Show download range selection dialog if multiple files
+    let selectedFiles = [];
+    if (numFiles > 1) {
+      const message =
+        `총 ${dataLines.length.toLocaleString()}행의 데이터가 ${numFiles}개의 Excel 파일로 분할됩니다.\n` +
+        `(각 파일당 10,000행)\n\n` +
+        `다운로드할 파일 범위를 입력하세요:\n` +
+        `• 전체: 빈칸 또는 "all"\n` +
+        `• 범위: "1-40" (1번부터 40번 파일)\n` +
+        `• 개별: "1,5,10" (1번, 5번, 10번 파일만)\n` +
+        `• 혼합: "1-10,15,20-25" (1~10번, 15번, 20~25번)\n\n` +
+        `예) 1-40`;
 
-    console.log("Excel 파일 다운로드 완료:", excelFilename);
+      const userInput = prompt(message, `1-${numFiles}`);
+
+      // User cancelled
+      if (userInput === null) {
+        console.log("Excel 다운로드가 취소되었습니다.");
+        return;
+      }
+
+      // Parse user input
+      try {
+        selectedFiles = parseFileRange(userInput.trim(), numFiles);
+
+        if (selectedFiles.length === 0) {
+          alert("선택된 파일이 없습니다. 다운로드를 취소합니다.");
+          return;
+        }
+
+        console.log(`선택된 파일: ${selectedFiles.length}개 (${selectedFiles.join(', ')})`);
+      } catch (err) {
+        alert(`입력 형식 오류: ${err.message}\n\n올바른 형식: "1-40", "1,5,10", "1-10,15,20-25"`);
+        return;
+      }
+    } else {
+      // Single file
+      selectedFiles = [1];
+    }
+
+    // Generate base filename
+    const originalFilename = uploadedFileName.replace(/\.(csv|CSV)$/, "") || "data";
+
+    // Excel cell text limit
+    const EXCEL_TEXT_LIMIT = 32767;
+
+    // Helper function to truncate long fields in a CSV line
+    const truncateCSVLine = (line) => {
+      const fields = [];
+      let field = '';
+      let inQuotes = false;
+
+      for (let i = 0; i < line.length; i++) {
+        const char = line[i];
+
+        if (char === '"') {
+          if (inQuotes && i + 1 < line.length && line[i + 1] === '"') {
+            field += '"';
+            i++;
+          } else {
+            inQuotes = !inQuotes;
+          }
+        } else if (char === ',' && !inQuotes) {
+          // Truncate field if too long
+          if (field.length > EXCEL_TEXT_LIMIT) {
+            field = field.substring(0, EXCEL_TEXT_LIMIT - 3) + '...';
+          }
+          fields.push(field);
+          field = '';
+        } else {
+          field += char;
+        }
+      }
+
+      // Add last field
+      if (field.length > EXCEL_TEXT_LIMIT) {
+        field = field.substring(0, EXCEL_TEXT_LIMIT - 3) + '...';
+      }
+      fields.push(field);
+
+      // Reconstruct CSV line with proper quoting
+      return fields.map(f => {
+        if (f.includes(',') || f.includes('"') || f.includes('\n')) {
+          return `"${f.replace(/"/g, '""')}"`;
+        }
+        return f;
+      }).join(',');
+    };
+
+    // Process only selected files
+    for (let i = 0; i < selectedFiles.length; i++) {
+      const fileNum = selectedFiles[i] - 1; // Convert to 0-indexed
+      const startRow = fileNum * ROWS_PER_FILE;
+      const endRow = Math.min(startRow + ROWS_PER_FILE, dataLines.length);
+      const fileLines = dataLines.slice(startRow, endRow);
+
+      console.log(`파일 ${fileNum + 1}/${numFiles} 생성 중... (${i + 1}/${selectedFiles.length} 선택됨) (${startRow + 1} ~ ${endRow} 행)`);
+
+      // Truncate long fields in header and data lines
+      const truncatedHeader = truncateCSVLine(headerLine);
+      const truncatedLines = fileLines.map(line => truncateCSVLine(line));
+
+      // Build CSV string for this file with header
+      let csvString = truncatedHeader + '\n' + truncatedLines.join('\n');
+
+      // Convert CSV string to worksheet using XLSX parser with retry logic
+      console.log(`  파일 ${fileNum + 1} CSV 파싱 중...`);
+      let ws = null;
+      let retryCount = 0;
+      const maxRetries = 3;
+
+      while (retryCount < maxRetries && !ws) {
+        try {
+          const workbook = XLSX.read(csvString, { type: 'string', raw: false });
+
+          // Check if workbook and sheet exist
+          if (!workbook || !workbook.Sheets || !workbook.Sheets['Sheet1']) {
+            throw new Error('CSV 파싱 실패: 워크시트를 생성할 수 없습니다.');
+          }
+
+          ws = workbook.Sheets['Sheet1'];
+
+          // Verify worksheet has data
+          if (!ws['!ref']) {
+            throw new Error('CSV 파싱 실패: 워크시트가 비어있습니다.');
+          }
+
+        } catch (parseError) {
+          retryCount++;
+          console.warn(`  파일 ${fileNum + 1} 파싱 시도 ${retryCount}/${maxRetries} 실패:`, parseError);
+
+          if (retryCount >= maxRetries) {
+            throw new Error(`파일 ${fileNum + 1} 파싱 실패 (${maxRetries}회 재시도): ${parseError.message}`);
+          }
+
+          // Wait a bit before retry to allow GC
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+      }
+
+      // Set column widths
+      const range = XLSX.utils.decode_range(ws['!ref']);
+      const numCols = range.e.c + 1;
+      ws["!cols"] = Array(numCols).fill({ wch: 15 });
+
+      // Create a new workbook for this file
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Data");
+
+      // Clear CSV string to free memory
+      csvString = null;
+
+      // Generate filename with part number
+      const excelFilename = numFiles > 1
+        ? `${originalFilename}_part${String(fileNum + 1).padStart(3, '0')}.xlsx`
+        : `${originalFilename}.xlsx`;
+
+      console.log(`  파일 ${fileNum + 1} 쓰기 중... (${excelFilename})`);
+
+      // Write and download the file
+      XLSX.writeFile(wb, excelFilename);
+
+      console.log(`  파일 ${fileNum + 1}/${numFiles} 완료: ${excelFilename}`);
+
+      // Allow browser to breathe between files
+      if (i < selectedFiles.length - 1) {
+        await new Promise(resolve => setTimeout(resolve, 200));
+      }
+    }
+
+    console.log(`선택된 Excel 파일 다운로드 완료: ${selectedFiles.length}개 파일`);
+
+    if (selectedFiles.length === numFiles) {
+      alert(`다운로드 완료!\n총 ${dataLines.length.toLocaleString()}행이 ${numFiles}개의 Excel 파일로 분할되었습니다.\n\n파일명: ${originalFilename}_part001.xlsx ~ part${String(numFiles).padStart(3, '0')}.xlsx`);
+    } else {
+      const fileList = selectedFiles.length <= 10
+        ? selectedFiles.map(n => `part${String(n).padStart(3, '0')}`).join(', ')
+        : `part${String(selectedFiles[0]).padStart(3, '0')} ~ part${String(selectedFiles[selectedFiles.length - 1]).padStart(3, '0')} 외 ${selectedFiles.length}개`;
+
+      alert(`다운로드 완료!\n선택한 ${selectedFiles.length}개 파일이 다운로드되었습니다.\n\n파일명: ${originalFilename}_${fileList}.xlsx`);
+    }
   } catch (err) {
     console.error("Excel 다운로드 실패:", err);
     alert("Excel 파일 다운로드 중 오류가 발생했습니다: " + err.message);
