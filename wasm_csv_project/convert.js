@@ -819,6 +819,24 @@ function renderChart() {
           },
           padding: { top: 10, bottom: 20 },
         },
+        zoom: {
+          pan: {
+            enabled: true,
+            mode: "x",
+          },
+          zoom: {
+            wheel: {
+              enabled: true,
+            },
+            pinch: {
+              enabled: true,
+            },
+            mode: "x",
+            drag: {
+              enabled: true
+            }
+          },
+        },
       },
       scales: {
         y: {
