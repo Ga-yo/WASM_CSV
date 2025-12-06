@@ -49,19 +49,70 @@ if (btnDownloadJson) {
       return;
     }
 
-    const blob = new Blob([JSON.stringify(convertedJsonData, null, 2)], {
-      type: "application/json",
-    });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    // Use original filename with .json extension
-    const jsonFilename = uploadedFileName.replace(/\.(csv|CSV)$/, "") + ".json";
-    a.download = jsonFilename;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
+    try {
+      // Use streaming approach for large data
+      const chunks = [];
+
+      // Start JSON structure
+      chunks.push('{\n');
+
+      // Add metadata if exists
+      if (convertedJsonData.metadata) {
+        chunks.push('  "metadata": ');
+        chunks.push(JSON.stringify(convertedJsonData.metadata, null, 2).split('\n').map((line, i) => i === 0 ? line : '  ' + line).join('\n'));
+        chunks.push(',\n');
+      }
+
+      // Add data array start
+      chunks.push('  "data": [\n');
+
+      // Process data in chunks to avoid string length limits
+      const dataLength = convertedJsonData.data.length;
+      const chunkSize = 1000; // Process 1000 rows at a time
+
+      for (let i = 0; i < dataLength; i += chunkSize) {
+        const endIndex = Math.min(i + chunkSize, dataLength);
+        const dataChunk = convertedJsonData.data.slice(i, endIndex);
+
+        dataChunk.forEach((row, index) => {
+          const isLastInChunk = (i + index === dataLength - 1);
+          const rowStr = JSON.stringify(row, null, 2)
+            .split('\n')
+            .map((line, lineIndex) => lineIndex === 0 ? '    ' + line : '    ' + line)
+            .join('\n');
+
+          chunks.push(rowStr);
+          if (!isLastInChunk) {
+            chunks.push(',\n');
+          } else {
+            chunks.push('\n');
+          }
+        });
+      }
+
+      // Close data array and JSON structure
+      chunks.push('  ]\n');
+      chunks.push('}');
+
+      // Create blob from chunks
+      const blob = new Blob(chunks, {
+        type: "application/json",
+      });
+
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      // Use original filename with .json extension
+      const jsonFilename = uploadedFileName.replace(/\.(csv|CSV)$/, "") + ".json";
+      a.download = jsonFilename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error("JSON 다운로드 오류:", e);
+      alert("JSON 다운로드 중 오류가 발생했습니다: " + e.message);
+    }
   });
 }
 
@@ -70,9 +121,25 @@ const beautifiedEl = document.getElementById("beautified");
 function renderJson(obj) {
   if (!beautifiedEl) return;
   try {
-    beautifiedEl.textContent = JSON.stringify(obj, null, 2);
+    // Ensure we're working with an object, not a string
+    const dataToRender = typeof obj === 'string' ? JSON.parse(obj) : obj;
+
+    // Check if data is too large for rendering
+    const dataSize = dataToRender.data ? dataToRender.data.length : 0;
+    if (dataSize > 1000) {
+      // Show a preview instead of the full data
+      const preview = {
+        ...dataToRender,
+        data: dataToRender.data.slice(0, 100) // Only first 100 rows
+      };
+      beautifiedEl.textContent = JSON.stringify(preview, null, 2);
+      beautifiedEl.textContent += `\n\n... (${dataSize - 100}개 행 생략됨. 전체 데이터는 다운로드 버튼을 사용하세요)`;
+    } else {
+      beautifiedEl.textContent = JSON.stringify(dataToRender, null, 2);
+    }
   } catch (e) {
-    beautifiedEl.textContent = String(obj);
+    console.error("JSON rendering error:", e);
+    beautifiedEl.textContent = "JSON 렌더링 오류: " + e.message + "\n\n데이터가 너무 큽니다. 다운로드 버튼을 사용해주세요.";
   }
 }
 
@@ -701,14 +768,14 @@ function initializeChartSection() {
   const headers = Object.keys(convertedJsonData.data[0]);
   let numericHeaders = [];
 
-  // Try to get numeric headers from meta info first
-  if (convertedJsonData.meta && convertedJsonData.meta.fields) {
-    numericHeaders = convertedJsonData.meta.fields
-      .filter((field) => field.type === "number")
-      .map((field) => field.name);
+  // Try to get numeric headers from metadata first
+  if (convertedJsonData.metadata && convertedJsonData.metadata.columns) {
+    numericHeaders = convertedJsonData.metadata.columns
+      .filter((col) => col.type === "integer" || col.type === "float")
+      .map((col) => col.name);
   } else {
     // Fallback: Infer numeric headers from the first data row
-    console.warn("Meta info not found. Inferring numeric columns from data.");
+    console.warn("Metadata not found. Inferring numeric columns from data.");
     const firstRow = convertedJsonData.data[0];
     numericHeaders = headers.filter(
       (h) => !isNaN(parseFloat(firstRow[h])) && isFinite(firstRow[h])
