@@ -70,7 +70,13 @@ string normalizeLineEndings(const string& str) {
 
 inline string escapeJson(const string& str) {
     string result;
-    result.reserve(str.size() * 1.1);
+    // 빠른 경로: 이스케이프가 필요없는 경우 바로 반환
+    size_t first_special = str.find_first_of("\"\\\b\f\n\r\t");
+    if (first_special == string::npos) {
+        return str;
+    }
+
+    result.reserve(str.size() * 1.2);
     for (char c : str) {
         switch (c) {
             case '"': result += "\\\""; break;
@@ -103,22 +109,74 @@ inline double stringToDouble(const string& str) {
 
 // 💡 Numeric String Cleaning (Removes commas and units)
 // 정규식을 사용하여 숫자 형식의 문자열을 정리합니다. (예: "₩ 1,234.56 kg" -> "1234.56")
+// 최적화: 숫자가 없는 경우 빠르게 반환
 string cleanNumericString(const string& input) {
-    // 1단계: 문자열에서 숫자처럼 보이는 첫 부분을 찾습니다. (쉼표, 소수점, 부호 포함)
-    // 예: "₩ 1,234.56 kg" -> "1,234.56"
+    if (input.empty()) return input;
+
+    // 빠른 경로 1: 이미 순수한 숫자인 경우 (가장 흔한 케이스)
+    char first = input[0];
+    if (isdigit(first) || first == '-' || first == '+' || first == '.') {
+        // 쉼표나 공백이 있는지 빠르게 체크
+        bool needs_cleaning = false;
+        for (char c : input) {
+            if (c == ',' || c == ' ') {
+                needs_cleaning = true;
+                break;
+            }
+            // 숫자가 아닌 특수문자 발견 시 정규식 사용 필요
+            if (!isdigit(c) && c != '.' && c != '-' && c != '+' && c != 'e' && c != 'E') {
+                needs_cleaning = true;
+                break;
+            }
+        }
+
+        // 쉼표나 공백만 있으면 간단히 제거
+        if (needs_cleaning) {
+            string result;
+            result.reserve(input.size());
+            for (char c : input) {
+                if (c != ',' && c != ' ') {
+                    result += c;
+                }
+            }
+            // 정리 후 유효한 숫자인지 확인
+            if (!result.empty() && !isnan(stringToDouble(result))) {
+                return result;
+            }
+        } else {
+            // 이미 깨끗한 숫자
+            return input;
+        }
+    }
+
+    // 빠른 경로 2: 숫자가 전혀 없으면 원본 반환
+    bool has_digit = false;
+    for (char c : input) {
+        if (isdigit(c)) {
+            has_digit = true;
+            break;
+        }
+    }
+    if (!has_digit) return input;
+
+    // 느린 경로: 정규식 사용 (통화 기호 등이 포함된 경우)
     static const regex num_regex(R"([+-]?\s*[\d,]+(?:\.\d+)?)");
     smatch match;
-    string extracted_num;
 
     if (regex_search(input, match, num_regex) && !match.empty()) {
-        extracted_num = match[0].str();
-        
-        // 2단계: 찾은 부분에서 쉼표(,)와 공백을 제거합니다.
-        extracted_num.erase(remove(extracted_num.begin(), extracted_num.end(), ','), extracted_num.end());
-        extracted_num.erase(remove(extracted_num.begin(), extracted_num.end(), ' '), extracted_num.end());
+        string extracted_num = match[0].str();
 
-        if (!extracted_num.empty() && !isnan(stringToDouble(extracted_num))) {
-            return extracted_num;
+        // 쉼표와 공백 제거
+        string result;
+        result.reserve(extracted_num.size());
+        for (char c : extracted_num) {
+            if (c != ',' && c != ' ') {
+                result += c;
+            }
+        }
+
+        if (!result.empty() && !isnan(stringToDouble(result))) {
+            return result;
         }
     }
 
@@ -414,73 +472,91 @@ string convertToJsonOptimized(const string& csvContent, const string& filename) 
     const int numColumns = headers.size();
     int numRows = rows.size();
 
-    // 3. Normalize row lengths and clean numeric strings
+    // 3. Normalize row lengths only (cleanup이 필요한 경우에만 수행)
     for (auto& row : rows) {
         row.resize(numColumns);
-        for (int i = 0; i < numColumns; ++i) {
-            // Apply cleaning *before* analysis
-            row[i] = cleanNumericString(row[i]); 
-        }
-    }
-    
-    // 4. Transpose for column-wise analysis
-    vector<vector<string>> columnData(numColumns);
-    for (int i = 0; i < numColumns; i++) {
-        columnData[i].reserve(numRows);
-    }
-    for (const auto& row : rows) {
-        for (int i = 0; i < numColumns; i++) {
-            columnData[i].push_back(row[i]);
-        }
     }
 
-    // 5. Determine Types and calculate full stats (using cleaned and transposed data)
+    // 4. 타입 감지 및 통계 수집 - 전치 없이 직접 처리 (메모리 최적화)
     vector<DataType> columnTypes(numColumns);
     vector<ColumnStats> stats(numColumns);
-    
-    for (int i = 0; i < numColumns; i++) {
-        vector<string> sample_data;
-        int sampleSize = ::min(numRows, 1000);
-        for(int r = 0; r < sampleSize; ++r) {
-            sample_data.push_back(columnData[i][r]);
-        }
-        
-        columnTypes[i] = detectColumnType(sample_data);
-        stats[i].type = columnTypes[i];
-        
-        unordered_set<string> uniqueVals;
-        uniqueVals.reserve(::min(numRows, 50000)); 
+    vector<unordered_set<string>> uniqueVals(numColumns);
 
-        for (const auto& val : columnData[i]) {
+    // 각 컬럼별 unique 값 저장소 예약
+    for (int i = 0; i < numColumns; i++) {
+        uniqueVals[i].reserve(::min(numRows, 10000));
+    }
+
+    // 타입 감지용 샘플 데이터 수집 (첫 1000행)
+    int sampleSize = ::min(numRows, 1000);
+    vector<vector<string>> sampleData(numColumns);
+    for (int i = 0; i < numColumns; i++) {
+        sampleData[i].reserve(sampleSize);
+    }
+
+    // 첫 패스: 샘플링 및 타입 감지 (cleanNumericString 호출 최소화)
+    for (int r = 0; r < sampleSize && r < numRows; r++) {
+        for (int c = 0; c < numColumns; c++) {
+            sampleData[c].push_back(rows[r][c]);
+        }
+    }
+
+    // 타입 감지
+    for (int i = 0; i < numColumns; i++) {
+        columnTypes[i] = detectColumnType(sampleData[i]);
+        stats[i].type = columnTypes[i];
+    }
+
+    // 두 번째 패스: 통계 수집 (숫자 컬럼만 cleanNumericString 호출)
+    for (int r = 0; r < numRows; r++) {
+        for (int c = 0; c < numColumns; c++) {
+            string val = rows[r][c];
+
+            // 숫자 타입 컬럼만 정리 수행 (대폭 성능 향상)
+            if (columnTypes[c] == DataType::INTEGER || columnTypes[c] == DataType::FLOAT) {
+                val = cleanNumericString(val);
+                rows[r][c] = val;  // 정리된 값으로 교체
+            }
+
             if (TypeChecker::isNull(val)) {
-                stats[i].nullCount++;
+                stats[c].nullCount++;
                 continue;
             }
 
-            if (uniqueVals.size() < 50000) { 
-                uniqueVals.insert(val);
+            // Unique 값 추적 (메모리 제한)
+            if (uniqueVals[c].size() < 50000) {
+                uniqueVals[c].insert(val);
             }
-            
-            if (columnTypes[i] == DataType::INTEGER || columnTypes[i] == DataType::FLOAT) {
+
+            // 타입별 통계
+            if (columnTypes[c] == DataType::INTEGER || columnTypes[c] == DataType::FLOAT) {
                 double num = stringToDouble(val);
                 if (!isnan(num)) {
-                    stats[i].addNumericValue(num);
+                    stats[c].addNumericValue(num);
                 }
-            } else if (columnTypes[i] == DataType::STRING) {
+            } else if (columnTypes[c] == DataType::STRING) {
                 uint32_t len = val.length();
-                stats[i].minLength = ::min(stats[i].minLength, len);
-                stats[i].maxLength = ::max(stats[i].maxLength, len);
+                stats[c].minLength = ::min(stats[c].minLength, len);
+                stats[c].maxLength = ::max(stats[c].maxLength, len);
             }
         }
-        stats[i].uniqueCount = uniqueVals.size();
+    }
+
+    // Unique count 설정
+    for (int i = 0; i < numColumns; i++) {
+        stats[i].uniqueCount = uniqueVals[i].size();
         if (stats[i].minLength == UINT32_MAX) stats[i].minLength = 0;
     }
 
 
-    // 6. Build JSON
+    // 5. Build JSON (메모리 예약으로 재할당 최소화)
     ostringstream json;
     json << fixed << setprecision(2);
-    
+
+    // 예상 JSON 크기 계산하여 버퍼 예약 (재할당 최소화)
+    size_t estimatedSize = content.length() * 1.5 + (numRows * numColumns * 20);
+    json.str().reserve(estimatedSize);
+
     json << "{\"metadata\":{\"filename\":\"" << escapeJson(filename) << "\"";
     json << ",\"totalRows\":" << numRows;
     json << ",\"totalColumns\":" << numColumns;
@@ -511,26 +587,36 @@ string convertToJsonOptimized(const string& csvContent, const string& filename) 
 
     json << "]},\"data\":[";
 
+    // Data output - 헤더 이스케이프 캐싱
+    vector<string> escapedHeaders(numColumns);
+    for (int i = 0; i < numColumns; i++) {
+        escapedHeaders[i] = escapeJson(headers[i]);
+    }
+
     // Data output
     for (int r = 0; r < numRows; r++) {
         if (r > 0) json << ",";
         json << "{";
         for (int c = 0; c < numColumns; c++) {
             if (c > 0) json << ",";
-            json << "\"" << escapeJson(headers[c]) << "\":";
+            json << "\"" << escapedHeaders[c] << "\":";
 
             const string& val = rows[r][c];
             if (TypeChecker::isNull(val)) {
                 json << "null";
             } else if (columnTypes[c] == DataType::INTEGER || columnTypes[c] == DataType::FLOAT) {
                 double num = stringToDouble(val);
-                jsonSafeDouble(json, num); 
+                jsonSafeDouble(json, num);
             } else if (columnTypes[c] == DataType::BOOLEAN) {
-                string lower = val;
-                transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
-                if (lower == "true" || lower == "yes" || lower == "1") json << "true";
-                else if (lower == "false" || lower == "no" || lower == "0") json << "false";
-                else json << "\"" << escapeJson(val) << "\"";
+                // 최적화: 대소문자 변환 없이 첫 글자만 체크
+                char first = val.empty() ? '\0' : val[0];
+                if (first == 't' || first == 'T' || first == 'y' || first == 'Y' || first == '1') {
+                    json << "true";
+                } else if (first == 'f' || first == 'F' || first == 'n' || first == 'N' || first == '0') {
+                    json << "false";
+                } else {
+                    json << "\"" << escapeJson(val) << "\"";
+                }
             } else {
                 json << "\"" << escapeJson(val) << "\"";
             }
