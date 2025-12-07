@@ -31,6 +31,16 @@ echo "Cleaning previous build files..."
 rm -f csv_converter.js csv_converter.wasm index.js index.wasm
 echo "✓ Cleaned"
 
+# Source files to compile
+SOURCE_FILES=(
+    csv_lib/csv_converter.cpp
+    csv_lib/csv_types.cpp
+    csv_lib/type_checker.cpp
+    csv_lib/csv_utils.cpp
+    csv_lib/csv_parser.cpp
+    bindings.cpp
+)
+
 # Common flags for both builds
 COMMON_FLAGS=(
     -s WASM=1
@@ -44,6 +54,7 @@ COMMON_FLAGS=(
     -s EXPORTED_RUNTIME_METHODS='["ccall","cwrap"]'
     -s NO_EXIT_RUNTIME=1
     -s DISABLE_EXCEPTION_CATCHING=0
+    -Icsv_lib # Add include path for csv_lib directory
     --bind
     -std=c++17
 )
@@ -55,7 +66,7 @@ build_release() {
     echo "Applying aggressive optimization flags..."
     echo ""
 
-    emcc csv_converter.cpp \
+    emcc "${SOURCE_FILES[@]}" \
         -o csv_converter.js \
         "${COMMON_FLAGS[@]}" \
         -O3 \
@@ -88,7 +99,7 @@ build_release() {
     else
         echo "✗ Release build failed with closure compiler"
         echo "Trying without closure compiler..."
-        emcc csv_converter.cpp \
+        emcc "${SOURCE_FILES[@]}" \
             -o csv_converter.js \
             "${COMMON_FLAGS[@]}" \
             -O3 \
@@ -113,7 +124,7 @@ build_release() {
 build_debug() {
     echo ""
     echo "Building debug version..."
-    emcc csv_converter.cpp \
+    emcc "${SOURCE_FILES[@]}" \
         -o csv_converter.js \
         "${COMMON_FLAGS[@]}" \
         -O0 \

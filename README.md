@@ -34,15 +34,22 @@ WASM_CSV/
 │   ├── 경찰청_보이스피싱 월별 현황.csv
 │   └── ...
 └── wasm_csv_project/
+    ├── csv_lib/                    # C++ 핵심 로직 라이브러리
+    │   ├── csv_converter.h
+    │   ├── csv_converter.cpp
+    │   ├── csv_parser.h
+    │   ├── csv_parser.cpp
+    │   ├── csv_types.h
+    │   ├── csv_types.cpp
+    │   ├── csv_utils.h
+    │   ├── csv_utils.cpp
+    │   ├── type_checker.h
+    │   └── type_checker.cpp
     ├── index.html                  # 메인 랜딩 페이지
-    ├── upload.html                 # CSV 파일 업로드 페이지
-    ├── convert.html                # CSV 분석/시각화 메인 페이지
     ├── benchmark.html              # 성능 벤치마크 페이지
-    ├── upload.js                   # 파일 업로드 UI 로직
     ├── convert.js                  # 데이터 분석/시각화 UI 로직
     ├── benchmark.js                # 벤치마크 UI 및 Pure JS 구현
-    ├── DBManager.js                # IndexedDB 파일 관리 모듈
-    ├── csv_converter.cpp           # WASM C++ 소스 코드
+    ├── bindings.cpp                # C++ 함수와 JS를 연결하는 바인딩 코드
     ├── build.sh                    # WASM 빌드 스크립트
     ├── json_format_sample.json     # JSON 출력 포맷 샘플
     └── styles.css                  # 공통 스타일시트
@@ -108,14 +115,17 @@ WASM_CSV/
 
 ## 핵심 파일 설명
 
-### `csv_converter.cpp`
+### C++ 소스 코드 (`csv_lib/` 및 `bindings.cpp`)
 
-CSV to JSON 변환을 위한 C++ 소스 코드입니다. 단일 파일로 모든 기능을 제공합니다.
+CSV to JSON 변환을 위한 C++ 소스 코드는 기능별로 모듈화되어 `csv_lib` 폴더에 위치합니다.
 
-**주요 함수:**
-- `convertToJson(csvContent, filename)` - 전체 데이터 포함 변환
-- `convertToJsonMetadataOnly(csvContent, filename)` - 메타데이터/통계만 추출
-- `convertToJsonAuto(csvContent, filename)` - 파일 크기에 따라 자동 선택
+**주요 파일:**
+- **`csv_lib/csv_converter.cpp`**: CSV 변환의 메인 로직과 통계 계산을 총괄합니다.
+- **`csv_lib/csv_parser.cpp`**: CSV 문자열을 파싱하여 헤더와 데이터로 분리합니다.
+- **`csv_lib/type_checker.cpp`**: 데이터의 타입을 (정수, 실수, 문자열 등) 검사합니다.
+- **`csv_lib/csv_utils.cpp`**: 문자열 처리 등 각종 유틸리티 함수를 포함합니다.
+- **`csv_lib/csv_types.cpp`**: 프로젝트 전반에서 사용되는 데이터 구조와 타입을 정의합니다.
+- **`bindings.cpp`**: C++ 함수(`convertToJson` 등)를 JavaScript에서 호출할 수 있도록 연결(바인딩)하는 역할을 합니다.
 
 **구현된 최적화 기법:**
 - **Welford 알고리즘**: 한 번의 패스로 평균/분산/표준편차 계산
@@ -124,23 +134,12 @@ CSV to JSON 변환을 위한 C++ 소스 코드입니다. 단일 파일로 모든
 - **샘플링 기반 타입 감지**: 1000행 샘플링으로 타입 추론
 - **유니크 값 추적 제한**: 메모리 절약을 위해 10,000개로 제한
 
-### `upload.html` / `upload.js`
-
-CSV 파일 업로드 페이지입니다.
-
-**주요 기능:**
-- 드래그앤드롭 파일 업로드
-- IndexedDB를 통한 대용량 파일 저장 (브라우저 제한까지)
-- SessionStorage를 통한 파일 메타데이터 관리
-- 파일 크기 표시 및 할당량 초과 오류 처리
-
-### `convert.html` / `convert.js`
+### `convert.js`
 
 CSV 데이터 분석 및 시각화 메인 페이지입니다.
 
 **주요 기능:**
 - **자동 CSV 변환**
-  - IndexedDB에서 파일 불러오기
   - 자동 인코딩 감지 (UTF-8, UTF-16, EUC-KR, CP949)
   - WASM 모듈을 통한 고속 변환
 - **요약 통계 섹션**
@@ -154,16 +153,6 @@ CSV 데이터 분석 및 시각화 메인 페이지입니다.
 - **JSON 미리보기/다운로드**
   - 대용량 데이터 처리 (1000개 행만 미리보기)
   - 스트리밍 방식 JSON 다운로드
-
-### `DBManager.js`
-
-IndexedDB 파일 관리 모듈입니다.
-
-**주요 기능:**
-- IndexedDB를 통한 파일 저장/조회/삭제
-- SessionStorage와 동기화된 메타데이터 관리
-- 트랜잭션 오류 처리 및 할당량 초과 감지
-- Promise 기반 비동기 API
 
 ### `benchmark.html` / `benchmark.js`
 
@@ -186,7 +175,7 @@ JavaScript vs WASM 성능 비교 도구입니다.
 
 ### `build.sh`
 
-WASM 빌드 스크립트입니다. 기본적으로 최대 성능 최적화가 적용됩니다.
+WASM 빌드 스크립트입니다. `csv_lib` 폴더 내의 모든 C++ 소스 파일과 `bindings.cpp`를 컴파일하여 단일 WASM 모듈을 생성합니다. 기본적으로 최대 성능 최적화가 적용됩니다.
 
 **적용된 최적화 플래그:**
 - `-O3`: 최고 수준 컴파일러 최적화
@@ -511,4 +500,3 @@ python3 -m http.server 8080
 - [ ] Web Worker를 이용한 백그라운드 처리
 - [ ] 데이터 필터링 (조건별 행 추출)
 - [ ] 추가 차트 타입 (산점도, 히스토그램 등)
-
