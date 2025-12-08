@@ -257,20 +257,3 @@ string convertToJsonOptimized(const string& csvContent, const string& filename) 
     json << "]}";
     return json.str();
 }
-
-// =================================================================================
-// Placeholder/Wrapper functions (for API compatibility)
-// =================================================================================
-
-// 💡 Reverted to 2-argument signatures for API compatibility
-string convertToJson(const string& csvContent, const string& filename) {
-    return convertToJsonOptimized(csvContent, filename);
-}
-
-string convertToJsonMetadataOnly(const string& csvContent, const string& filename) {
-    return convertToJsonOptimized(csvContent, filename);
-}
-
-string convertToJsonAuto(const string& csvContent, const string& filename) {
-    return convertToJsonOptimized(csvContent, filename);
-}

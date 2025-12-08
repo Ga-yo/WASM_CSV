@@ -296,8 +296,8 @@ async function loadAndConvertCsv() {
     console.log("Original CSV content stored for Excel conversion.");
 
     // Convert CSV to JSON using WASM
-    console.log("Calling WASM function 'convertToJsonAuto'...");
-    const jsonString = Module.convertToJsonAuto(text, uploadedFileName);
+    console.log("Calling WASM function 'convertToJsonOptimized'...");
+    const jsonString = Module.convertToJsonOptimized(text, uploadedFileName);
     console.log("WASM function execution finished.");
 
     console.log("Parsing JSON string...");

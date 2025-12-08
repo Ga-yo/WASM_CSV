@@ -310,7 +310,7 @@ class BenchmarkController {
       // Wait for WASM module
       this.log('WASM 모듈 대기 중...', 'info');
 
-      if (typeof Module === 'undefined' || !Module.convertToJsonAuto) {
+      if (typeof Module === 'undefined' || !Module.convertToJsonOptimized) {
         this.log('WASM 모듈 초기화 중...', 'info');
         await new Promise((resolve, reject) => {
           const timeout = setTimeout(() => {
@@ -342,15 +342,12 @@ class BenchmarkController {
 
       this.showProgress('WASM 변환 중...', 50, '처리 중...');
 
-      // Run conversion - try optimized version first
+      // Run conversion using the optimized version
       let jsonString;
-      if (Module.convertToJsonOptimized) {
-        this.log('Using OPTIMIZED WASM converter', 'success');
-      } else if (Module.convertToJsonAuto) {
-        this.log('Using standard WASM converter', 'info');
-      } else {
+      if (!Module.convertToJsonOptimized) {
         throw new Error('WASM module not ready');
       }
+      this.log('Using OPTIMIZED WASM converter', 'success');
 
       // Conversion start
       timestamps.conversionStart = new Date();
@@ -365,9 +362,7 @@ class BenchmarkController {
       const rowCountEnd = performance.now();
       timestamps.rowCountTime = (rowCountEnd - rowCountStart) / 1000;
 
-      jsonString = Module.convertToJsonOptimized ?
-        Module.convertToJsonOptimized(text, this.selectedFile.name) :
-        Module.convertToJsonAuto(text, this.selectedFile.name);
+      jsonString = Module.convertToJsonOptimized(text, this.selectedFile.name);
       const endTime = performance.now();
 
       timestamps.conversionEnd = new Date();
@@ -870,7 +865,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Check WASM module status on page load
   const checkWasmModule = () => {
-    if (typeof Module !== 'undefined' && Module.convertToJsonAuto) {
+    if (typeof Module !== 'undefined' && Module.convertToJsonOptimized) {
       controller.log('✓ WASM 모듈 로드 완료', 'success');
       if (Module.convertToJsonOptimized) {
         controller.log('✓ 최적화 함수 사용 가능', 'success');
