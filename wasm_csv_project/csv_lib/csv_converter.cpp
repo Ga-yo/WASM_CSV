@@ -108,11 +108,13 @@ string convertToJsonOptimized(const string& csvContent, const string& filename) 
     // 4. 타입 감지 및 통계 수집 - 전치 없이 직접 처리 (메모리 최적화)
     vector<DataType> columnTypes(numColumns);
     vector<ColumnStats> stats(numColumns);
-    vector<unordered_set<string>> uniqueVals(numColumns);
+    // OPTIMIZATION: Store string hashes instead of full strings to save memory.
+    vector<unordered_set<size_t>> uniqueValHashes(numColumns);
+    std::hash<string> stringHasher;
 
     // 각 컬럼별 unique 값 저장소 예약
     for (int i = 0; i < numColumns; i++) {
-        uniqueVals[i].reserve(::min(numRows, 10000));
+        uniqueValHashes[i].reserve(::min(numRows, 10000));
     }
 
     // 타입 감지용 샘플 데이터 수집 (첫 1000행)
@@ -154,8 +156,8 @@ string convertToJsonOptimized(const string& csvContent, const string& filename) 
             }
 
             // Unique 값 추적 (메모리 제한)
-            if (uniqueVals[c].size() < 50000) {
-                uniqueVals[c].insert(val);
+            if (uniqueValHashes[c].size() < 50000) {
+                uniqueValHashes[c].insert(stringHasher(val));
             }
 
             // 타입별 통계
@@ -174,7 +176,7 @@ string convertToJsonOptimized(const string& csvContent, const string& filename) 
 
     // Unique count 설정
     for (int i = 0; i < numColumns; i++) {
-        stats[i].uniqueCount = uniqueVals[i].size();
+        stats[i].uniqueCount = uniqueValHashes[i].size();
         if (stats[i].minLength == UINT32_MAX) stats[i].minLength = 0;
     }
 

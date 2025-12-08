@@ -246,12 +246,13 @@
         </div>
       </section>
       <script>
-        // Initialize Module object before loading WASM
-        var Module = {
-          onRuntimeInitialized: function() {
-            console.log('WASM module initialized successfully');
-          }
-        };
+        var Module = {}; // Create Module object
+        window.wasmReadyPromise = new Promise((resolve) => {
+            Module.onRuntimeInitialized = () => {
+                console.log('WASM module initialized successfully');
+                resolve();
+            };
+        });
       </script>
       <script src="csv_converter.js"></script>
       <script type="module" src="convert.js"></script>

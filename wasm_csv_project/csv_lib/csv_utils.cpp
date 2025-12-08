@@ -64,58 +64,43 @@ string escapeJson(const string& str) {
     return result;
 }
 
+// Faster, non-regex implementation of cleanNumericString
 string cleanNumericString(const string& input) {
-    if (input.empty()) return input;
+    string result;
+    result.reserve(input.length());
+    bool foundDigit = false;
+    bool foundDecimal = false;
+    bool foundSign = false;
 
-    // 빠른 경로 1: 이미 순수한 숫자인 경우 (가장 흔한 케이스)
-    char first = input[0];
-    if (isdigit(first) || first == '-' || first == '+' || first == '.') {
-        bool needs_cleaning = false;
-        for (char c : input) {
-            if (c == ',' || c == ' ') {
-                needs_cleaning = true;
-                break;
-            }
-            if (!isdigit(c) && c != '.' && c != '-' && c != '+' && c != 'e' && c != 'E') {
-                needs_cleaning = true;
-                break;
-            }
-        }
+    size_t start = input.find_first_not_of(" \t");
+    if (start == string::npos) return ""; // Empty or whitespace
 
-        if (needs_cleaning) {
-            string result;
-            result.reserve(input.size());
-            for (char c : input) {
-                if (c != ',' && c != ' ') {
-                    result += c;
-                }
-            }
-            if (!result.empty() && TypeChecker::isNumeric(result)) {
-                return result;
-            }
+    for (size_t i = start; i < input.length(); ++i) {
+        char c = input[i];
+
+        if (isdigit(c)) {
+            result += c;
+            foundDigit = true;
+        } else if (c == '.' && !foundDecimal) {
+            // Append decimal point only if it seems to be part of a number
+            if (result.empty()) result += '0';
+            result += c;
+            foundDecimal = true;
+        } else if ((c == '+' || c == '-') && !foundDigit && !foundSign) {
+            result += c;
+            foundSign = true;
+        } else if (c == ',' || c == ' ') {
+            // Ignore commas and spaces, but only if we are already building a number
+            if (foundDigit) continue;
         } else {
-            return input;
+            // If we have found digits and encounter a non-numeric character, stop.
+            if (foundDigit) break;
         }
     }
 
-    // 빠른 경로 2: 숫자가 전혀 없으면 원본 반환
-    if (input.find_first_of("0123456789") == string::npos) {
-        return input;
+    if (!result.empty() && TypeChecker::isNumeric(result)) {
+        return result;
     }
 
-    // 느린 경로: 정규식 사용 (통화 기호 등이 포함된 경우)
-    static const regex num_regex(R"([+-]?\s*[\d,]+(?:\.\d+)?)");
-    smatch match;
-
-    if (regex_search(input, match, num_regex) && !match.empty()) {
-        string extracted_num = match[0].str();
-        string result;
-        result.reserve(extracted_num.size());
-        for (char c : extracted_num) {
-            if (c != ',' && c != ' ') result += c;
-        }
-        if (!result.empty() && TypeChecker::isNumeric(result)) return result;
-    }
-
-    return input; // 숫자 부분을 찾지 못하면 원본 반환
+    return input; // Return original if no valid number was extracted
 }

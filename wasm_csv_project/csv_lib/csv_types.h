@@ -6,10 +6,6 @@
 #include <cstdint>
 #include <cmath>
 
-// =========================
-// Type Definitions
-// =========================
-
 enum class DataType {
     INTEGER,
     FLOAT,
@@ -19,10 +15,6 @@ enum class DataType {
 };
 
 std::string dataTypeToString(DataType type);
-
-// =========================
-// Data Structures
-// =========================
 
 struct CSVParseResult {
     std::vector<std::string> headers;
