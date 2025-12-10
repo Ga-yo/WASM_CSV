@@ -40,8 +40,8 @@ static void addNumericValue(ColumnStats& stats, double value) {
         stats.mean = value;
         stats.m2 = 0;
     } else {
-        stats.min = std::min(stats.min, value);
-        stats.max = std::max(stats.max, value);
+        stats.min = min(stats.min, value);
+        stats.max = max(stats.max, value);
 
         double delta = value - stats.mean;
         stats.mean += delta / stats.count;
@@ -134,14 +134,14 @@ string convertToJsonOptimized(const string& csvContent, const string& filename) 
     vector<DataType> columnTypes(numColumns);
     vector<ColumnStats> stats(numColumns);
     vector<unordered_set<size_t>> uniqueValHashes(numColumns);
-    std::hash<string> stringHasher;
+    hash<string> stringHasher;
 
     for (int i = 0; i < numColumns; i++) {
-        uniqueValHashes[i].reserve(::min(numRows, 10000));
+        uniqueValHashes[i].reserve(min(numRows, 10000));
     }
 
     // 1. 샘플링: 데이터 타입 감지를 위해 최대 1000행까지 샘플링
-    int sampleSize = ::min(numRows, 1000);
+    int sampleSize = min(numRows, 1000);
     vector<vector<string>> sampleData(numColumns);
     for (int i = 0; i < numColumns; i++) {
         sampleData[i].reserve(sampleSize);
@@ -184,14 +184,14 @@ string convertToJsonOptimized(const string& csvContent, const string& filename) 
 
             // 타입별 통계 갱신
             if (columnTypes[c] == DataType::INTEGER || columnTypes[c] == DataType::FLOAT) {
-                double num = std::stod(val); // Use std::stod as it's already verified numeric
+                double num = stod(val);
                 if (!isnan(num)) {
                     addNumericValue(stats[c], num);
                 }
             } else if (columnTypes[c] == DataType::STRING) {
                 uint32_t len = val.length();
-                stats[c].minLength = ::min(stats[c].minLength, len);
-                stats[c].maxLength = ::max(stats[c].maxLength, len);
+                stats[c].minLength = min(stats[c].minLength, len);
+                stats[c].maxLength = max(stats[c].maxLength, len);
             }
         }
     }
@@ -260,7 +260,7 @@ string convertToJsonOptimized(const string& csvContent, const string& filename) 
             if (TypeChecker::isNull(val)) {
                 json << "null";
             } else if (columnTypes[c] == DataType::INTEGER || columnTypes[c] == DataType::FLOAT) {
-                double num = std::stod(val);
+                double num = stod(val);
                 jsonSafeDouble(json, num);
             } else if (columnTypes[c] == DataType::BOOLEAN) {
                 char first = val.empty() ? '\0' : val[0];
