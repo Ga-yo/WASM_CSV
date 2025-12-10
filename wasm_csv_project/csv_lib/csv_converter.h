@@ -3,6 +3,8 @@
 
 #include <string>
 
-std::string convertToJsonOptimized(const std::string& csvContent, const std::string& filename);
+using namespace std;
+
+string convertToJsonOptimized(const string& csvContent, const string& filename);
 
 #endif // CSV_CONVERTER_H
