@@ -27,6 +27,42 @@ using namespace emscripten;
 // Column Statistics
 // =========================
 
+// DataType 열거형을 JSON에서 사용할 문자열로 변환합니다.
+static string dataTypeToString(DataType type) {
+    switch (type) {
+        case DataType::INTEGER: return "integer";
+        case DataType::FLOAT:   return "float";
+        case DataType::BOOLEAN: return "boolean";
+        case DataType::DATE:    return "date";
+        case DataType::STRING:  return "string";
+    }
+    return "string";
+}
+
+// Welford's algorithm을 사용하여 통계 정보를 업데이트합니다.
+static void addNumericValue(ColumnStats& stats, double value) {
+    stats.count++;
+    stats.sum += value;
+
+    if (stats.count == 1) {
+        stats.min = stats.max = value;
+        stats.mean = value;
+        stats.m2 = 0;
+    } else {
+        stats.min = std::min(stats.min, value);
+        stats.max = std::max(stats.max, value);
+
+        double delta = value - stats.mean;
+        stats.mean += delta / stats.count;
+        double delta2 = value - stats.mean;
+        stats.m2 += delta * delta2;
+    }
+}
+
+static double getStdDev(const ColumnStats& stats) {
+    return stats.count > 1 ? sqrt(stats.m2 / (stats.count - 1)) : NAN;
+}
+
 static DataType detectColumnType(const vector<string>& values) {
     bool allInteger = true;
     bool allFloat = true;
@@ -60,13 +96,6 @@ static DataType detectColumnType(const vector<string>& values) {
     if (allFloat) return DataType::FLOAT;
     return DataType::STRING;
 }
-
-
-// ---------------------------------------------------------------------------------
-
-// =================================================================================
-// Main Optimized Conversion Function 
-// =================================================================================
 
 inline void jsonSafeDouble(ostringstream& json, double value) {
     json << setprecision(16) << defaultfloat; 
