@@ -6,7 +6,7 @@
 
 using namespace std;
 
-char detectDelimiter(const string& content);
+static char detectDelimiter(const string& content);
 CSVParseResult parseCSV(const string& content);
 
 #endif // CSV_PARSER_H

@@ -295,8 +295,16 @@ async function loadAndConvertCsv() {
 - Conversion Rate: ${conversionRate.toFixed(2)} MB/s`);
 
     console.log("Parsing JSON string...");
-    convertedJsonData = JSON.parse(jsonString);
-    console.log("JSON parsed successfully.");
+    const parsedData = JSON.parse(jsonString);
+
+    // C++ 모듈에서 반환된 오류 확인
+    if (parsedData.error) {
+      // 오류가 있으면 alert으로 사용자에게 알리고, 업로드 페이지로 리디렉션
+      alert(`파일 처리 오류: ${parsedData.error}`);
+      window.location.href = "upload.html";
+      return; // 추가 처리를 중단
+    }
+    convertedJsonData = parsedData;
 
     // Render JSON
     renderJson(convertedJsonData);
