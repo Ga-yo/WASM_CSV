@@ -57,10 +57,10 @@ static double getStdDev(const ColumnStats& stats) {
 
 // 주어진 값들의 샘플을 기반으로 컬럼의 데이터 타입을 추론하는 함수
 static DataType detectColumnType(const vector<string>& values) {
-    bool allInteger = true;
-    bool allFloat = true;
-    bool allBoolean = true;
-    bool allDate = true;
+    bool isColumnInteger = true;
+    bool isColumnFloat = true;
+    bool isColumnBoolean = true;
+    bool isColumnDate = true;
     int nonNullCount = 0;
 
     for (const auto& val : values) {
@@ -70,26 +70,26 @@ static DataType detectColumnType(const vector<string>& values) {
         // 숫자형 판별을 위해 문자열 정제 (예: "1,000" -> "1000")
         string cleanedVal = cleanNumericString(val);
         if (!TypeChecker::isNumeric(cleanedVal)) {
-             allInteger = false;
-             allFloat = false;
+             isColumnInteger = false;
+             isColumnFloat = false;
         } else {
             // 정수인지 실수인지 구체적으로 확인
-            if (allInteger && !TypeChecker::isInteger(cleanedVal)) allInteger = false;
-            if (allFloat && !TypeChecker::isFloat(cleanedVal) && !TypeChecker::isInteger(cleanedVal)) allFloat = false;
+            if (isColumnInteger && !TypeChecker::isInteger(cleanedVal)) isColumnInteger = false;
+            if (isColumnFloat && !TypeChecker::isFloat(cleanedVal) && !TypeChecker::isInteger(cleanedVal)) isColumnFloat = false;
         }
 
-        if (allBoolean && !TypeChecker::isBoolean(val)) allBoolean = false;
-        if (allDate && !TypeChecker::isDate(val)) allDate = false;
+        if (isColumnBoolean && !TypeChecker::isBoolean(val)) isColumnBoolean = false;
+        if (isColumnDate && !TypeChecker::isDate(val)) isColumnDate = false;
 
-        if (!allInteger && !allFloat && !allBoolean && !allDate) break;
+        if (!isColumnInteger && !isColumnFloat && !isColumnBoolean && !isColumnDate) break;
     }
 
     // 우선순위에 따라 타입 결정 (Boolean > Date > Integer > Float > String)
     if (nonNullCount == 0) return DataType::STRING;
-    if (allBoolean) return DataType::BOOLEAN;
-    if (allDate) return DataType::DATE;
-    if (allInteger) return DataType::INTEGER;
-    if (allFloat) return DataType::FLOAT;
+    if (isColumnBoolean) return DataType::BOOLEAN;
+    if (isColumnDate) return DataType::DATE;
+    if (isColumnInteger) return DataType::INTEGER;
+    if (isColumnFloat) return DataType::FLOAT;
     return DataType::STRING;
 }
 
