@@ -263,32 +263,13 @@ async function loadAndConvertCsv() {
     }
     console.log("Encoding detection and decoding complete.");
 
-    // Wait for WASM module to be ready
-    if (typeof Module === 'undefined' || !Module.convertToJsonAuto) {
-      console.log('Waiting for WASM module to initialize...');
-
-      await new Promise((resolve, reject) => {
-        // Save original callback if it exists
-        const originalCallback = Module && Module.onRuntimeInitialized;
-
-        const initCallback = () => {
-          console.log("WASM module ready");
-          if (originalCallback && typeof originalCallback === "function") {
-            originalCallback();
-          }
-          resolve();
-        };
-
-        if (typeof Module === 'undefined') {
-          window.Module = {
-            onRuntimeInitialized: initCallback
-          };
-        } else {
-          Module.onRuntimeInitialized = initCallback;
-        }
-      });
+    // Wait for WASM module to be ready using the global promise
+    if (!Module || !Module.convertToJsonOptimized) {
+      console.log('Waiting for WASM module to initialize via promise...');
+      await window.wasmReadyPromise;
+      console.log('WASM module is ready to use.');
     } else {
-      console.log('WASM module already loaded');
+      console.log('WASM module was already loaded.');
     }
 
     // Store original CSV content for direct Excel conversion
@@ -296,13 +277,34 @@ async function loadAndConvertCsv() {
     console.log("Original CSV content stored for Excel conversion.");
 
     // Convert CSV to JSON using WASM
-    console.log("Calling WASM function 'convertToJsonAuto'...");
-    const jsonString = Module.convertToJsonAuto(text, uploadedFileName);
+    console.log("Calling WASM function 'convertToJsonOptimized'...");
+    const wasmStartTime = performance.now();
+    const jsonString = Module.convertToJsonOptimized(text, uploadedFileName);
+    const wasmEndTime = performance.now();
+    const wasmTime = wasmEndTime - wasmStartTime;
     console.log("WASM function execution finished.");
 
+    const csvSize = new Blob([text]).size;
+    const jsonSize = new Blob([jsonString]).size;
+    const conversionRate = (csvSize / (1024 * 1024)) / (wasmTime / 1000); // MB/s
+
+    console.log(`[CSV->JSON Conversion Stats]
+- CSV Size: ${(csvSize / 1024).toFixed(2)} KB
+- JSON Size: ${(jsonSize / 1024).toFixed(2)} KB
+- WASM Conversion Time: ${wasmTime.toFixed(2)} ms
+- Conversion Rate: ${conversionRate.toFixed(2)} MB/s`);
+
     console.log("Parsing JSON string...");
-    convertedJsonData = JSON.parse(jsonString);
-    console.log("JSON parsed successfully.");
+    const parsedData = JSON.parse(jsonString);
+
+    // C++ 모듈에서 반환된 오류 확인
+    if (parsedData.error) {
+      // 오류가 있으면 alert으로 사용자에게 알리고, 업로드 페이지로 리디렉션
+      alert(`파일 처리 오류: ${parsedData.error}`);
+      window.location.href = "upload.html";
+      return; // 추가 처리를 중단
+    }
+    convertedJsonData = parsedData;
 
     // Render JSON
     renderJson(convertedJsonData);

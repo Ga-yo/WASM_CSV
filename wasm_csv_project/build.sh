@@ -34,7 +34,6 @@ echo "✓ Cleaned"
 # Source files to compile
 SOURCE_FILES=(
     csv_lib/csv_converter.cpp
-    csv_lib/csv_types.cpp
     csv_lib/type_checker.cpp
     csv_lib/csv_utils.cpp
     csv_lib/csv_parser.cpp
