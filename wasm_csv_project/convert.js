@@ -203,6 +203,7 @@ async function loadAndConvertCsv() {
     console.log("Starting encoding detection...");
     // Auto-detect encoding (UTF-8, UTF-16, EUC-KR, CP949)
     let text;
+    let isUtf8 = false;
 
     // Check for BOM (Byte Order Mark)
     if (uint8Array.length >= 3 &&
@@ -212,7 +213,8 @@ async function loadAndConvertCsv() {
       // UTF-8 with BOM
       console.log("Detected UTF-8 with BOM.");
       const decoder = new TextDecoder('utf-8');
-      text = decoder.decode(uint8Array.slice(3));
+      // text = decoder.decode(uint8Array.slice(3)); // Skip decoding for optimization
+      isUtf8 = true;
     } else if (uint8Array.length >= 2 &&
                uint8Array[0] === 0xFF &&
                uint8Array[1] === 0xFE) {
@@ -232,8 +234,11 @@ async function loadAndConvertCsv() {
       try {
         console.log("Attempting to decode with UTF-8...");
         const decoder = new TextDecoder('utf-8', { fatal: true });
-        text = decoder.decode(uint8Array);
+        // text = decoder.decode(uint8Array); // Verify only, don't decode full if possible
+        // For detection, we might need to decode, but let's assume if it passes, we use raw bytes
+        decoder.decode(uint8Array.slice(0, Math.min(uint8Array.length, 10000))); // Sample check
         console.log("Successfully decoded with UTF-8.");
+        isUtf8 = true;
       } catch (e) {
         console.log("UTF-8 decoding failed. Trying Korean encodings...");
         // If UTF-8 fails, try common Korean encodings
@@ -263,8 +268,14 @@ async function loadAndConvertCsv() {
     }
     console.log("Encoding detection and decoding complete.");
 
+    // If not UTF-8 (e.g. EUC-KR), we must decode to JS string first
+    if (!isUtf8 && !text) {
+        // Logic above sets 'text' for non-UTF-8, but for UTF-8 we skipped it.
+        // If we fell back to Korean encoding, 'text' is already set.
+    }
+
     // Wait for WASM module to be ready using the global promise
-    if (!Module || !Module.convertToJsonOptimized) {
+    if (!Module || !Module.WasmCSVParser) {
       console.log('Waiting for WASM module to initialize via promise...');
       await window.wasmReadyPromise;
       console.log('WASM module is ready to use.');
@@ -273,29 +284,129 @@ async function loadAndConvertCsv() {
     }
 
     // Store original CSV content for direct Excel conversion
-    originalCsvContent = text;
+    if (isUtf8) {
+        const decoder = new TextDecoder('utf-8');
+        originalCsvContent = decoder.decode(uint8Array); // Needed for Excel export
+    } else {
+        originalCsvContent = text;
+    }
     console.log("Original CSV content stored for Excel conversion.");
 
     // Convert CSV to JSON using WASM
-    console.log("Calling WASM function 'convertToJsonOptimized'...");
+    console.log("Using Zero-Copy WASM Parser...");
     const wasmStartTime = performance.now();
-    const jsonString = Module.convertToJsonOptimized(text, uploadedFileName);
-    const wasmEndTime = performance.now();
-    const wasmTime = wasmEndTime - wasmStartTime;
-    console.log("WASM function execution finished.");
+    
+    let parser = null;
+    let parsedData = null;
+    let wasmTime = 0;
+    let jsReconstructTime = 0;
+    let inputPtr = null;
 
-    const csvSize = new Blob([text]).size;
-    const jsonSize = new Blob([jsonString]).size;
+    try {
+      parser = new Module.WasmCSVParser();
+      const wasmExecStart = performance.now();
+      
+      if (isUtf8) {
+          // Fast Path: Pass raw bytes
+          inputPtr = Module._malloc(uint8Array.length);
+          Module.HEAPU8.set(uint8Array, inputPtr);
+          parser.parseBytes(inputPtr, uint8Array.length);
+      } else {
+          // Slow Path: Pass decoded string
+          parser.parse(text);
+      }
+
+      const wasmExecEnd = performance.now();
+      
+      console.log(`Pure WASM Parsing Time: ${(wasmExecEnd - wasmExecStart).toFixed(2)} ms`);
+      console.log("WASM function execution finished.");
+
+      // Reconstruct data in JS
+      console.log("Reconstructing JS objects from WASM memory...");
+      const metadataJson = parser.getMetadata(uploadedFileName);
+      const metadata = JSON.parse(metadataJson);
+      
+      // Optimize: Convert headers to JS array immediately
+      const headersVec = parser.getHeaders();
+      const headers = [];
+      for (let i = 0; i < headersVec.size(); i++) headers.push(headersVec.get(i));
+      headersVec.delete(); // Clean up immediately
+
+      const totalRows = metadata.totalRows;
+      const columns = [];
+
+      try {
+        // Retrieve column data
+        for (let i = 0; i < headers.length; i++) {
+          const type = metadata.columns[i].type;
+          if (type === 'integer' || type === 'float') {
+            const ptr = parser.getNumericDataPtr(i);
+            const offset = ptr / 8;
+
+            if (!Module.HEAPF64) {
+              throw new Error("WASM 메모리(HEAPF64)에 접근할 수 없습니다.");
+            }
+
+            // Create a copy to persist after parser deletion
+            columns.push(new Float64Array(Module.HEAPF64.subarray(offset, offset + totalRows)));
+          } else {
+            // Optimized: Use Packed Transfer
+            parser.prepareStringColumn(i);
+            const dataPtr = parser.getPackedDataPtr();
+            const offsetsPtr = parser.getPackedOffsetsPtr();
+            const offsetsIdx = offsetsPtr / 4;
+            
+            const arr = new Array(totalRows);
+            const decoder = new TextDecoder('utf-8');
+            const heapU8 = Module.HEAPU8;
+            const heapU32 = Module.HEAPU32;
+            
+            // Optimization: Copy entire column buffer once
+            const totalDataLen = heapU32[offsetsIdx + totalRows];
+            const colBuffer = heapU8.slice(dataPtr, dataPtr + totalDataLen);
+
+            for (let j = 0; j < totalRows; j++) {
+              const start = heapU32[offsetsIdx + j];
+              const end = heapU32[offsetsIdx + j + 1];
+              arr[j] = decoder.decode(colBuffer.subarray(start, end));
+            }
+            columns.push(arr);
+          }
+        }
+
+        // Create row-based data
+        const jsStart = performance.now();
+        const jsonData = new Array(totalRows);
+        for (let r = 0; r < totalRows; r++) {
+          const row = {};
+          for (let c = 0; c < headers.length; c++) {
+            row[headers[c]] = columns[c][r];
+          }
+          jsonData[r] = row;
+        }
+        const jsEnd = performance.now();
+        jsReconstructTime = jsEnd - jsStart;
+        console.log(`JS Object Reconstruction Time: ${jsReconstructTime.toFixed(2)} ms`);
+        
+        wasmTime = (jsEnd - wasmStartTime); // Total time including JS overhead
+
+        parsedData = { metadata: metadata, data: jsonData };
+      } finally {
+        // headersVec is already deleted
+      }
+    } finally {
+      if (parser) parser.delete(); // Important: Free WASM memory
+      if (inputPtr) Module._free(inputPtr); // Free input buffer
+    }
+
+    const csvSize = file.size;
     const conversionRate = (csvSize / (1024 * 1024)) / (wasmTime / 1000); // MB/s
 
     console.log(`[CSV->JSON Conversion Stats]
 - CSV Size: ${(csvSize / 1024).toFixed(2)} KB
-- JSON Size: ${(jsonSize / 1024).toFixed(2)} KB
 - WASM Conversion Time: ${wasmTime.toFixed(2)} ms
+- (JS Object Creation Overhead: ${jsReconstructTime.toFixed(2)} ms)
 - Conversion Rate: ${conversionRate.toFixed(2)} MB/s`);
-
-    console.log("Parsing JSON string...");
-    const parsedData = JSON.parse(jsonString);
 
     // C++ 모듈에서 반환된 오류 확인
     if (parsedData.error) {
@@ -691,18 +802,18 @@ function applyFilterToColumn(columnName) {
   let resultText = "";
 
   if (activeFilter === "max") {
-    const maxValue = Math.max(...values);
+    const maxValue = values.reduce((max, val) => Math.max(max, val), values[0]);
     resultText = `"${columnName}" 열의 최대값: ${maxValue.toLocaleString()}`;
   } else if (activeFilter === "min") {
-    const minValue = Math.min(...values);
+    const minValue = values.reduce((min, val) => Math.min(min, val), values[0]);
     resultText = `"${columnName}" 열의 최소값: ${minValue.toLocaleString()}`;
   } else if (activeFilter === "avg") {
     const sum = values.reduce((a, b) => a + b, 0);
     const avg = sum / values.length;
     resultText = `"${columnName}" 열의 평균: ${avg.toFixed(2)}`;
   } else if (activeFilter === "stats") {
-    const maxValue = Math.max(...values);
-    const minValue = Math.min(...values);
+    const maxValue = values.reduce((max, val) => Math.max(max, val), values[0]);
+    const minValue = values.reduce((min, val) => Math.min(min, val), values[0]);
     const sum = values.reduce((a, b) => a + b, 0);
     const avg = sum / values.length;
     const count = values.length;

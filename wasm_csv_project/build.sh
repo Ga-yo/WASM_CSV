@@ -37,7 +37,6 @@ SOURCE_FILES=(
     csv_lib/type_checker.cpp
     csv_lib/csv_utils.cpp
     csv_lib/csv_parser.cpp
-    bindings.cpp
 )
 
 # Common flags for both builds
@@ -50,10 +49,13 @@ COMMON_FLAGS=(
     -s MAXIMUM_MEMORY=4GB
     -s INITIAL_MEMORY=256MB
     -s STACK_SIZE=16MB
-    -s EXPORTED_RUNTIME_METHODS='["ccall","cwrap"]'
+    -s EXPORTED_RUNTIME_METHODS='["ccall","cwrap","getValue","setValue","HEAPF64","HEAPU8","HEAPU32"]'
     -s NO_EXIT_RUNTIME=1
     -s DISABLE_EXCEPTION_CATCHING=0
+    -s USE_PTHREADS=1
+    -s PTHREAD_POOL_SIZE=8
     -Icsv_lib # Add include path for csv_lib directory
+    -s EXPORTED_FUNCTIONS='["_malloc","_free"]'
     --bind
     -std=c++17
 )
@@ -73,11 +75,7 @@ build_release() {
         -msimd128 \
         -fomit-frame-pointer \
         -finline-functions \
-        -funroll-loops \
-        -s AGGRESSIVE_VARIABLE_ELIMINATION=1 \
-        -s ELIMINATE_DUPLICATE_FUNCTIONS=1 \
-        -s IGNORE_CLOSURE_COMPILER_ERRORS=1 \
-        --closure 1
+        -funroll-loops
 
     if [ $? -eq 0 ]; then
         echo "✓ Release build successful"
@@ -88,7 +86,6 @@ build_release() {
         echo "  • Aggressive function inlining"
         echo "  • Loop unrolling"
         echo "  • Dead code elimination"
-        echo "  • Closure compiler optimization"
         echo ""
         echo "Available functions:"
         echo "  • convertToJson() - Standard conversion"
@@ -96,26 +93,8 @@ build_release() {
         echo "  • convertToJsonOptimized() - Optimized algorithm"
         return 0
     else
-        echo "✗ Release build failed with closure compiler"
-        echo "Trying without closure compiler..."
-        emcc "${SOURCE_FILES[@]}" \
-            -o csv_converter.js \
-            "${COMMON_FLAGS[@]}" \
-            -O3 \
-            -flto \
-            -msimd128 \
-            -fomit-frame-pointer \
-            -finline-functions \
-            -funroll-loops \
-            -s AGGRESSIVE_VARIABLE_ELIMINATION=1
-
-        if [ $? -eq 0 ]; then
-            echo "✓ Release build successful (without closure)"
-            return 0
-        else
-            echo "✗ Build failed"
-            return 1
-        fi
+        echo "✗ Build failed"
+        return 1
     fi
 }
 
@@ -161,7 +140,7 @@ echo "  ./build.sh        # Build release version (maximum performance optimizat
 echo "  ./build.sh debug  # Build debug version (for development)"
 echo ""
 echo "To test, start a local server:"
-echo "  python3 -m http.server 8080"
+echo "  python3 server.py"
 echo "Then open: http://localhost:8080/index.html"
 echo ""
 echo "WASM Advantages for Large File Processing:"
