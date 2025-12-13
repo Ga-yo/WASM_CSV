@@ -4,82 +4,32 @@
 
 ## 팀 정보
 - **팀명**: [14조]
-- **팀장**: [이가영]
-- **팀원**: [안용욱], [최미란]
+
+| 이름 | 역할 | 담당 기능 |
+|------|------|-----------|
+| [이가영] | 팀장 | CSV 데이터 업로드 및 파싱 개발 |
+| [안용욱] | 팀원 | 데이터 필터링 및 통계 연산 개발 |
+| [최미란] | 팀원 | 데이터 시각화(Chart) 기능 개발 |
 
 ## 프로젝트 개요
 
 CSV 파일을 업로드하여 WebAssembly(WASM)를 통해 데이터를 고속으로 파싱하고 JSON으로 변환하는 웹 애플리케이션입니다.
 
-### 주요 기능
-1. **CSV → JSON 변환**: WASM을 활용한 고속 데이터 파싱 및 변환
-2. **자동 인코딩 감지**: UTF-8, EUC-KR, CP949 자동 감지 및 한글 지원
-3. **데이터 타입 자동 추론**: integer, float, boolean, date, string 자동 판별
-4. **기본 통계 계산**: 평균, 최대/최소값, 표준편차, null 개수 등 자동 계산
-5. **대용량 파일 처리**: 스트리밍 방식으로 메모리 효율적 처리 (최대 500MB)
-6. **데이터 분석**: 최댓값/최솟값/평균 계산, 컬럼 정렬, 통계 필터링
-7. **데이터 시각화**: Chart.js 기반 막대/원형/선 그래프 생성 및 줌/팬 기능
-8. **다양한 내보내기**: JSON/Excel(xlsx) 다운로드, 대용량 파일 분할 다운로드
-9. **성능 비교 도구**: JavaScript vs WASM 성능 벤치마크 제공
-
-## 프로젝트 구조
-
-```
-WASM_CSV/
-├── README.md
-├── .gitignore
-├── data_sample/                    # 테스트용 CSV 샘플 파일
-│   ├── 중간기말성적.csv
-│   ├── 출석프로젝트성적.csv
-│   ├── 경찰청_보이스피싱 월별 현황.csv
-│   └── ...
-└── wasm_csv_project/
-    ├── csv_lib/                    # C++ 핵심 로직 라이브러리
-    │   ├── csv_converter.h
-    │   ├── csv_converter.cpp
-    │   ├── csv_parser.h
-    │   ├── csv_parser.cpp
-    │   ├── csv_types.h
-    │   ├── csv_types.cpp
-    │   ├── csv_utils.h
-    │   ├── csv_utils.cpp
-    │   ├── type_checker.h
-    │   └── type_checker.cpp
-    ├── index.html                  # 메인 랜딩 페이지
-    ├── benchmark.html              # 성능 벤치마크 페이지
-    ├── convert.js                  # 데이터 분석/시각화 UI 로직
-    ├── benchmark.js                # 벤치마크 UI 및 Pure JS 구현
-    ├── bindings.cpp                # C++ 함수와 JS를 연결하는 바인딩 코드
-    ├── build.sh                    # WASM 빌드 스크립트
-    ├── json_format_sample.json     # JSON 출력 포맷 샘플
-    └── styles.css                  # 공통 스타일시트
-```
-
-## 기술 스택
-
-- **Frontend**: HTML, TailwindCSS, JavaScript (ES6 Modules)
-- **Backend (WASM)**: C++17, Emscripten
-- **시각화**: Chart.js 3.x + chartjs-plugin-zoom (줌/팬 기능)
-- **데이터 처리**: SheetJS (xlsx) - Excel 내보내기
-- **로컬 스토리지**: IndexedDB (대용량 파일 저장)
-- **라이브러리**: Pretendard 폰트, Font Awesome
-
 ## 핵심 기능
 
-### 1. CSV 파싱 및 JSON 변환 (완료)
+### 1. CSV 파싱 및 JSON 변환
 - 다양한 구분자 자동 감지 (쉼표, 탭, 세미콜론)
 - 데이터 타입 자동 추론 (integer, float, boolean, date, string)
 - 통계 정보 계산 (min, max, mean, std_dev, null_count 등)
 
-### 2. 인코딩 자동 감지 (완료)
+### 2. 인코딩 자동 감지
 - UTF-8, EUC-KR, CP949 자동 감지
 - 한글 CSV 파일 지원
 
-### 3. 대용량 파일 처리 (완료)
-- 스트리밍 방식으로 메모리 효율적 처리
+### 3. 대용량 파일 처리
 - 10MB 이상 파일은 메타데이터만 추출 옵션
 
-### 4. 데이터 분석 기능 (완료)
+### 4. 데이터 분석 기능
 - **데이터 테이블 뷰어**
   - 컬럼 정렬 (오름차순/내림차순/초기화)
   - 최대 100개 행 미리보기 (성능 최적화)
@@ -96,97 +46,13 @@ WASM_CSV/
   - 범위 선택 다운로드 (예: "1-40", "1,5,10", "1-10,15,20-25")
   - 셀 텍스트 길이 제한 처리 (Excel 32,767자 제한)
 
-### 5. 데이터 시각화 (완료)
+### 5. 데이터 시각화
 - **Chart.js 기반 대화형 차트**
   - 막대 그래프 (Bar Chart)
   - 원형 그래프 (Pie Chart)
   - 선 그래프 (Line Chart)
 - **차트 커스터마이징**
-  - X축 레이블 선택 (모든 컬럼)
-  - Y축 데이터 선택 (숫자 타입 컬럼만)
-  - 차트 타입 실시간 변경
-  - 색상 및 스타일 자동 적용
 - **줌/팬 기능**
-  - 마우스 휠 줌
-  - 드래그로 팬
-  - 핀치 줌 (모바일)
-- **메타데이터 활용**
-  - WASM에서 감지한 숫자 타입 컬럼만 Y축에 표시
-
-## 핵심 파일 설명
-
-### C++ 소스 코드 (`csv_lib/` 및 `bindings.cpp`)
-
-CSV to JSON 변환을 위한 C++ 소스 코드는 기능별로 모듈화되어 `csv_lib` 폴더에 위치합니다.
-
-**주요 파일:**
-- **`csv_lib/csv_converter.cpp`**: CSV 변환의 메인 로직과 통계 계산을 총괄합니다.
-- **`csv_lib/csv_parser.cpp`**: CSV 문자열을 파싱하여 헤더와 데이터로 분리합니다.
-- **`csv_lib/type_checker.cpp`**: 데이터의 타입을 (정수, 실수, 문자열 등) 검사합니다.
-- **`csv_lib/csv_utils.cpp`**: 문자열 처리 등 각종 유틸리티 함수를 포함합니다.
-- **`csv_lib/csv_types.cpp`**: 프로젝트 전반에서 사용되는 데이터 구조와 타입을 정의합니다.
-- **`bindings.cpp`**: C++ 함수(`convertToJson` 등)를 JavaScript에서 호출할 수 있도록 연결(바인딩)하는 역할을 합니다.
-
-**구현된 최적화 기법:**
-- **Welford 알고리즘**: 한 번의 패스로 평균/분산/표준편차 계산
-- **룩업 테이블**: 숫자 판별 성능 최적화
-- **메모리 예약**: `reserve()`로 재할당 방지
-- **샘플링 기반 타입 감지**: 1000행 샘플링으로 타입 추론
-- **유니크 값 추적 제한**: 메모리 절약을 위해 10,000개로 제한
-
-### `convert.js`
-
-CSV 데이터 분석 및 시각화 메인 페이지입니다.
-
-**주요 기능:**
-- **자동 CSV 변환**
-  - 자동 인코딩 감지 (UTF-8, UTF-16, EUC-KR, CP949)
-  - WASM 모듈을 통한 고속 변환
-- **요약 통계 섹션**
-  - 데이터 테이블 뷰어 (정렬 가능)
-  - 최댓값/최솟값/평균/통계 계산
-  - Excel 다운로드 (10,000행 단위 분할)
-- **데이터 시각화 섹션**
-  - Chart.js 기반 막대/원형/선 그래프
-  - 레이블 및 데이터 컬럼 선택
-  - 줌/팬 기능
-- **JSON 미리보기/다운로드**
-  - 대용량 데이터 처리 (1000개 행만 미리보기)
-  - 스트리밍 방식 JSON 다운로드
-
-### `benchmark.html` / `benchmark.js`
-
-JavaScript vs WASM 성능 비교 도구입니다.
-
-**주요 기능:**
-- Pure JavaScript CSV 파서 구현
-- WASM 파서와의 성능 비교
-- 개별 테스트 및 비교 테스트 지원
-- 상세 타임스탬프 로깅 (시작/종료 시간, 총 소요 시간)
-- 레이턴시 측정 테이블 제공
-  - 파일 읽기 시간
-  - 행 개수 확인 시간
-  - 데이터 포맷 변환 시간
-  - JSON 파싱 시간
-  - 행당 처리 시간
-  - 총 실행 시간 및 성능 차이
-- **대용량 파일 오류 처리**: JavaScript 실패 시 오류 유형 및 원인 분석 제공
-- **핵심 인사이트 제공**: 파일 크기별 WASM vs JavaScript 비교 및 권장사항
-
-### `build.sh`
-
-WASM 빌드 스크립트입니다. `csv_lib` 폴더 내의 모든 C++ 소스 파일과 `bindings.cpp`를 컴파일하여 단일 WASM 모듈을 생성합니다. 기본적으로 최대 성능 최적화가 적용됩니다.
-
-**적용된 최적화 플래그:**
-- `-O3`: 최고 수준 컴파일러 최적화
-- `-flto` + `--llvm-lto 3`: 링크 타임 최적화 (LTO level 3)
-- `--closure 1`: JavaScript 코드 압축 및 최적화
-- `-ffast-math`: 고속 수학 연산 최적화
-- `-msimd128`: SIMD 벡터화 지원 (병렬 처리)
-- `-finline-functions`: 함수 인라이닝
-- `-funroll-loops`: 루프 언롤링
-- `-s ALLOW_MEMORY_GROWTH=1`: 동적 메모리 확장 허용
-- `-s MAXIMUM_MEMORY=4GB`: 최대 메모리 제한
 
 ## 실행 방법
 
@@ -230,18 +96,9 @@ python3 -m http.server 8080
 
 ### 4. 웹 브라우저에서 접속
 
-- **메인 페이지**: http://localhost:8080/index.html
-- **CSV 업로드 페이지**: http://localhost:8080/upload.html
-- **데이터 분석/시각화 페이지**: http://localhost:8080/convert.html
-- **성능 벤치마크 페이지**: http://localhost:8080/benchmark.html
-
-## 역할 분담
-
-| 이름 | 역할 | 담당 기능 |
-|------|------|-----------|
-| [이가영] | 팀장, csv 파싱 개발 | [담당 내용 입력] |
-| [안용욱] | json 파일 필터링 개발 | [담당 내용 입력] |
-| [최미란] | json 파일 차트 시각화 개발 | [담당 내용 입력] |
+- **CSV 업로드 페이지**: http://wasm.jaymong.me:8880/upload.html
+- **데이터 분석/시각화 페이지**: http://wasm.jaymong.me:8880/convert.html
+- **성능 벤치마크 페이지**: http://wasm.jaymong.me:8880/benchmark.html
 
 ## 개발 중 어려웠던 점과 해결 방법
 
@@ -282,16 +139,6 @@ python3 -m http.server 8080
   - `Module.onRuntimeInitialized` 콜백 활용
   - Promise 기반 WASM 로딩 대기 로직 구현
   - 타임아웃(10초) 설정으로 로딩 실패 감지
-
-
-## Latency 측정 테이블
-
-프로젝트에 포함된 성능 벤치마크 도구([benchmark.html](wasm_csv_project/benchmark.html))를 사용하여 실제 측정한 결과입니다.
-
-### 측정 환경
-- **브라우저**: Chrome / Safari / Firefox (최신 버전 권장)
-- **OS**: macOS / Windows / Linux
-- **측정 방법**: [benchmark.html](wasm_csv_project/benchmark.html) 페이지에서 "둘 다 비교" 버튼 클릭
 
 ---
 
@@ -416,87 +263,3 @@ python3 -m http.server 8080
 1. **인코딩**: data_sample의 CSV 파일들은 EUC-KR 인코딩입니다. 자동 감지가 되지만, 새 파일 추가 시 UTF-8 권장
 2. **메모리**: 매우 큰 파일(1GB+)은 브라우저 메모리 제한에 주의
 3. **빌드 파일**: `.wasm`, `csv_converter.js` 등은 `.gitignore`에 포함되어 있으므로 각자 빌드 필요
-
-## 트러블슈팅
-
-### WASM 로드 실패
-- 로컬 파일 시스템에서 직접 열면 CORS 오류 발생
-- 반드시 HTTP 서버를 통해 접근 (`python3 -m http.server`)
-
-### 한글 깨짐
-- 인코딩 감지 실패 시 콘솔에서 `Detected encoding` 확인
-- `detectEncoding()` 함수의 점수 임계값 조정 필요할 수 있음
-
-### 빌드 오류
-- `emcc` 명령어가 없으면 `source ./emsdk_env.sh` 실행
-- C++17 문법 오류 시 `-std=c++17` 플래그 확인
-
-## 가산점 항목
-
-### 1. WebAssembly(WASM) 최적화 및 성능 극대화
-- C++ 코드를 Emscripten으로 컴파일하여 브라우저에서 네이티브 수준의 성능 구현
-- **적극적인 컴파일러 최적화 적용**:
-  - LTO level 3 (Link-Time Optimization)
-  - SIMD 벡터화 (병렬 처리)
-  - Fast-math 최적화
-  - Closure Compiler 압축
-- JavaScript 대비 **10-20배 빠른** CSV 파싱 성능 달성
-
-### 2. 대용량 데이터 처리 최적화
-- 스트리밍 방식 파싱으로 메모리 효율 극대화
-- 최대 500MB 이상의 대용량 CSV 파일 처리 가능
-- Welford 알고리즘을 활용한 원패스 통계 계산
-
-### 3. 고급 알고리즘 적용
-- **Welford's Algorithm**: 평균, 분산, 표준편차를 한 번의 패스로 계산
-- **룩업 테이블**: 숫자 판별 성능 최적화
-- **샘플링 기반 타입 감지**: 1000행 샘플링으로 타입 추론 성능 향상
-
-### 4. 다국어 인코딩 자동 감지
-- UTF-8, EUC-KR, CP949 자동 감지 및 변환
-- 바이트 패턴 분석을 통한 정확한 인코딩 판별
-- 한글 CSV 파일 완벽 지원
-
-### 5. 성능 벤치마크 도구
-- JavaScript vs WASM 실시간 성능 비교
-- Pure JavaScript 파서 구현으로 공정한 비교
-- 처리 속도, 처리량, 속도 향상 배율 시각화
-- 다양한 파일 크기에 대한 성능 분석 제공
-
-### 6. 데이터 분석 및 시각화 기능
-- **대화형 데이터 테이블**: 컬럼별 정렬, 100개 행 미리보기, 총 개수 표시
-- **통계 분석**: 숫자 컬럼 자동 감지 및 최댓값/최솟값/평균/통계 계산
-- **Chart.js 기반 시각화**: 막대/원형/선 그래프 지원, 줌/팬 기능 포함
-- **Excel 내보내기**: 대용량 파일 분할 다운로드 (10,000행 단위), 범위 선택 가능
-- **JSON 스트리밍**: 메모리 효율적인 대용량 JSON 다운로드
-- **IndexedDB 활용**: 브라우저 로컬에 대용량 파일 저장 및 관리
-
-## 개발 로드맵
-
-### Phase 1: CSV to JSON 변환 (✅ 완료)
-- [x] CSV 파일 업로드 및 파싱
-- [x] WASM 기반 고속 변환
-- [x] 인코딩 자동 감지
-- [x] 기본 통계 계산
-- [x] 성능 벤치마크 도구
-
-### Phase 2: UI/UX 개선 (✅ 완료)
-- [x] 모던한 웹 인터페이스 디자인
-- [x] 드래그앤드롭 파일 업로드
-- [x] 실시간 진행 상태 표시
-- [x] JSON 결과 뷰어 및 다운로드
-
-### Phase 3: 데이터 분석 및 시각화 (✅ 완료)
-- [x] 데이터 테이블 뷰어 및 정렬 기능
-- [x] 요약 통계 필터 (최댓값/최솟값/평균/통계)
-- [x] Chart.js를 활용한 데이터 시각화
-- [x] 줌/팬 기능이 포함된 대화형 차트
-- [x] Excel 다운로드 (대용량 파일 분할)
-- [x] JSON 다운로드 (스트리밍 방식)
-- [x] IndexedDB 기반 파일 저장
-
-### Phase 4: 향후 확장 가능 기능 (선택)
-- [ ] 여러 파일 일괄 처리
-- [ ] Web Worker를 이용한 백그라운드 처리
-- [ ] 데이터 필터링 (조건별 행 추출)
-- [ ] 추가 차트 타입 (산점도, 히스토그램 등)
